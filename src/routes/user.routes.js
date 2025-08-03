@@ -5,5 +5,5 @@ import {authenticateToken} from '../middlewares/auth.middleware.js'
 const router = express.Router()
 
 router.get('/', authenticateToken, userController.getUsers)
-
+router.get('/profile/:username', userController.getUserByUsername)
 export default router
