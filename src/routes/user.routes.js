@@ -6,4 +6,5 @@ const router = express.Router()
 
 router.get('/', authenticateToken, userController.getUsers)
 router.get('/profile/:username', userController.getUserByUsername)
+router.put('/profile/update', authenticateToken, userController.updateUser)
 export default router

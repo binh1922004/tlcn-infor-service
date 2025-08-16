@@ -12,7 +12,7 @@ export const getUsers = async (req, res, next) => {
 
 export const getUserByUsername = async(req, res, next) => {
 	try {
-		const username = req.params.username
+		const username = req.params.userName
 		const user = await userModel.findByUsername(username)
 		if (!user){
 			return response.sendError(res, 'User is not existed', 404)
@@ -20,10 +20,36 @@ export const getUserByUsername = async(req, res, next) => {
 		
 		return response.sendSuccess(res, {
 			_id: user._id, 
-			username: user.username,
+			userName: user.userName,
 			fullName: user.fullName,
-			isOwner: req.username != null && user.id == req.username,
+			isOwner: req.userName != null && user.userName === req.userName,
 			dob: user.dob
+		})
+	}
+	catch (err) {
+		next(err)
+	}
+}
+
+export const updateUser = async (req, res, next) => {
+	try{
+		const username = req.userName
+		const userUpdate = req.body
+
+		const userFound = await userModel.findByUsername(username)
+		if (username !== userFound.userName){
+			return response.sendError(res, 'Bad request', 401)
+		}
+		for (let key in userUpdate){
+			userFound[key] = userUpdate[key]
+		}
+		await userFound.save()
+		return response.sendSuccess(res, {
+			_id: userFound._id,
+			userName: userFound.userName,
+			fullName: userFound.fullName,
+			isOwner: req.userName != null && userFound.userName === req.userName,
+			dob: userFound.dob
 		})
 	}
 	catch (err) {

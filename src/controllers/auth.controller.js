@@ -8,7 +8,7 @@ const SALT_ROUNDS = 10
 
 export const createUser = async (req, res, next) => {
 	try {
-		const username = req.body.username
+		const username = req.body.userName
 		const userCheck = await userModel.findByUsername(username)
 		if (userCheck){
 			return response.sendError(res, 'User is existed', 404)
@@ -19,10 +19,10 @@ export const createUser = async (req, res, next) => {
 			newUser.password = hashPassword
 
 			const createdUser = await userModel.create(newUser)
-			if (!createUser){
+			if (!createdUser){
 				return response.sendError(res, 'User is existed')
 			}
-			return response.sendSuccess(res, createUser) 
+			return response.sendSuccess(res, createdUser)
 		}
 	} 
 	catch (error) {
@@ -32,7 +32,7 @@ export const createUser = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
 	try{
-		const username = req.body.username
+		const username = req.body.userName
 		const password = req.body.password
 		
 		const user = await userModel.findByUsername(username)
@@ -46,7 +46,7 @@ export const login = async (req, res, next) => {
 			}
 			
 			const dataForAccessToken = {
-				username: username
+				userName: username
 			}
 			const accessToken = authMethod.generateJwt(dataForAccessToken)
 			// let refreshToken = randToken.generate()
