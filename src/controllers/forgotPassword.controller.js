@@ -1,9 +1,9 @@
 import bcrypt from "bcrypt";
 import User from "../models/user.models.js";
-import { sendOtp, verifyOtpForgot } from "./otp.controller.js"; 
+import { sendOtpForgotPass, verifyOtpForgot } from "./otp.controller.js"; 
 import redisClient from "../utils/redisClient.js";
 
-export const forgotPasswordSendOtp = sendOtp;
+export const forgotPasswordSendOtp = sendOtpForgotPass;
 
 
 export const forgotPasswordVerifyOtp = verifyOtpForgot;

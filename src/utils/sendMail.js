@@ -1,12 +1,12 @@
 import nodemailer from "nodemailer";
-
+import { config } from "../../config/env.js";
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false, 
   auth: {
-    user: 'ttnghia204@gmail.com',
-    pass: 'byzf engd xbey rdkl',
+    user: config.email,
+    pass: config.passEmail,
   },
   tls: {
     rejectUnauthorized: false 

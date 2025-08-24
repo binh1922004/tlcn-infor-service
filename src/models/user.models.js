@@ -5,7 +5,8 @@ const userSchema = new mongoose.Schema({
     email: {type: String, required: true, unique: true},
     password: {type: String, required: true},
     fullName: {type: String, required: true},
-    dob: {type: String}
+    dob: {type: String},
+    active: {type:Boolean, default: false}
 }, {
     timestamps: true //auto generate createAt and updateAt
 })
