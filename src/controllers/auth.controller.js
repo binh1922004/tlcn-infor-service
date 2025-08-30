@@ -61,7 +61,8 @@ export const createUser = async (req, res, next) => {
 					message: 'User created successfully but OTP sending failed. Please try to resend OTP.',
 					user: createdUser
 				});
-			}		}
+			}		
+		}
 	} 
 	catch (error) {
 		next(error);
