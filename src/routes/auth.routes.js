@@ -8,6 +8,9 @@ const router = express.Router()
 router.post('/register', authController.createUser)
 router.post('/', authController.login)
 
+//refresh Token
+router.post('/refresh', authController.refreshToken)
+
 // Register OTP
 router.post("/register/resend-otp", resendOtpRegister);
 router.post("/register/verify-otp", verifyOtpRegister);

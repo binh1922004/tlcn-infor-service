@@ -11,7 +11,7 @@ export const authenticateToken = async (req, res, next) => {
 
     jwt.verify(token, config.accessTokenKey, (err, user) => {
         if (err)
-            return response.sendError(res, "BadRequest", 403);
+            return response.sendError(res, "BadRequest", 401);
         //Assign user info from JWT to next req. 
         req.userName = user.userName
         next()
