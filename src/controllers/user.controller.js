@@ -38,7 +38,7 @@ export const updateUser = async (req, res, next) => {
 
 		const userFound = await userModel.findByUsername(username)
 		if (username !== userFound.userName){
-			return response.sendError(res, 'Bad request', 401)
+			return response.sendError(res, 'Bad request', 404)
 		}
 		for (let key in userUpdate){
 			userFound[key] = userUpdate[key]
