@@ -1,8 +1,11 @@
 import userModel from '../models/user.models.js';
 import bcrypt from 'bcrypt';
 import * as authMethod from '../method/auth.method.js';
-import randToken from 'rand-token';
 import response from '../helpers/response.js';
+import {config} from "../../config/env.js";
+import ms from 'ms';
+import jwt from "jsonwebtoken";
+import {generateToken} from "../method/auth.method.js";
 
 const SALT_ROUNDS = 10
 
@@ -75,7 +78,6 @@ export const login = async (req, res, next) => {
 			return response.sendError(res, 'User not found', 404)
 		}
 		else{
-			console.log(bcrypt.compareSync(password, user.password))
 			if (!bcrypt.compareSync(password, user.password)){
 				return response.sendError(res, 'Password or username is incorrect', 401)
 			}
@@ -83,14 +85,10 @@ export const login = async (req, res, next) => {
 			if (!user.active) {
 				return response.sendError(res, 'Tài khoản chưa được kích hoạt. Hãy xác nhận mã OTP cho tài khoản mình', 401)
 			}
-			
-			const dataForAccessToken = {
-				userName: username
-			}
-			const accessToken = authMethod.generateJwt(dataForAccessToken)
-			// let refreshToken = randToken.generate()
+			const {accessToken, refreshToken} = authMethod.generateToken(user)
+			setRefreshCookie(res, refreshToken);
 			return response.sendSuccess(res, {
-				accessToken, 
+				accessToken,
 				user
 			})
 		}
@@ -99,4 +97,31 @@ export const login = async (req, res, next) => {
 		console.log('Error', error)
 		next(error)
 	}
-} 
+}
+
+export const refreshToken = async (req, res, next) => {
+	// console.log('Refresh token', req.cookies.refresh_token);
+	const refresh = req.cookies?.refresh_token;
+	if (!refresh) return res.status(401).json({ error: 'Missing refresh token' });
+
+	try {
+		const payload = jwt.verify(refresh, config.refreshTokenKey);
+		const user = await userModel.findByUsername(payload.userName);
+		console.log(user);
+		const {accessToken, refreshToken} = generateToken(user);
+		setRefreshCookie(res, refreshToken);
+
+		return response.sendSuccess(res, {accessToken: accessToken});
+	} catch (e) {
+		console.error('Error', e);
+		return response.sendError(res, 'Invalid/expired refresh token', 401);
+	}
+}
+
+function setRefreshCookie(res, token) {
+	res.cookie('refresh_token', token, {
+		httpOnly: true,
+		path: '/api/auth/refresh',        // chỉ gửi cookie tới /auth/*
+		maxAge: ms(config.refreshTokenLife),
+	});
+}
