@@ -6,7 +6,9 @@ import {config} from "../../config/env.js";
 import ms from 'ms';
 import jwt from "jsonwebtoken";
 import {generateToken} from "../method/auth.method.js";
-
+import redisClient from "../utils/redisClient.js";
+import sendMail from "../utils/sendMail.js";
+import crypto from 'crypto';
 const SALT_ROUNDS = 10
 
 
@@ -31,6 +33,7 @@ const sendOtpToEmail = async (email, userName) => {
 export const createUser = async (req, res, next) => {
 	try {
 		const username = req.body.userName
+		const email = req.body.email;
 		const userCheck = await userModel.findByUsername(username)
 		if (userCheck){
 			return response.sendError(res, 'User is existed', 404)
@@ -126,3 +129,60 @@ function setRefreshCookie(res, token) {
 		maxAge: ms(config.refreshTokenLife),
 	});
 }
+
+export const getCurrentUser = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return response.sendError(res, "Token không hợp lệ", 401);
+    }
+    
+    const token = authHeader.substring(7); // Remove 'Bearer '
+    
+    const decoded = jwt.verify(token, config.accessTokenKey);
+    const user = await userModel.findOne({ userName: decoded.userName });
+    
+    if (!user) {
+      return response.sendError(res, "User không tồn tại", 404);
+    }
+    
+    return response.sendSuccess(res, {
+      user: {
+        id: user._id,
+        userName: user.userName,
+        email: user.email,
+        fullName: user.fullName,
+        active: user.active,
+        avatar: user.avatar,
+      }
+    }, "Lấy thông tin user thành công");
+    
+  } catch (error) {
+    console.error('❌ GetCurrentUser error:', error);
+    return response.sendError(res, "Token không hợp lệ", 401);
+  }
+}
+
+export const logout = async (req, res) => {
+  try {
+    console.log('🔄 Logout request received');
+    console.log('🔍 Request cookies:', req.cookies);
+    
+    // ✅ Clear refresh token cookie
+    res.clearCookie('refresh_token', {
+      httpOnly: true,
+      path: '/api/auth/refresh', // ✅ Same path as setRefreshCookie
+      secure: process.env.NODE_ENV === 'production', // ✅ HTTPS in production
+      sameSite: 'lax' // ✅ CSRF protection
+    });
+    
+    console.log('✅ Refresh token cookie cleared');
+    
+    return response.sendSuccess(res, {}, "Đăng xuất thành công");
+    
+  } catch (error) {
+    console.error('❌ Logout error:', error);
+    return response.sendError(res, "Lỗi server khi đăng xuất", 500);
+  }
+};

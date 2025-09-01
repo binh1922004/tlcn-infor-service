@@ -3,37 +3,6 @@ import sendMail from "../utils/sendMail.js";
 import crypto from "crypto";
 import User from "../models/user.models.js";
 
-// // Gửi OTP cho Register
-// export const sendOtpRegister = async (req, res) => {
-//   try {
-//     const { email, userName } = req.body;
-//     if (!email) return res.status(400).json({ message: "Email is required" });
-//     if (!userName) return res.status(400).json({ message: "Username is required" });
-
-//     // Kiểm tra user tồn tại với cả email và username
-//     const user = await User.findOne({ email, userName });
-//     if (!user) {
-//       return res.status(404).json({ 
-//         message: "Email hoặc username không đúng. Vui lòng kiểm tra lại thông tin." 
-//       });
-//     }
-
-//     // Tạo OTP 6 chữ số
-//     const otp = crypto.randomInt(100000, 999999).toString();
-
-//     // Lưu OTP vào Redis với TTL 120s (chỉ cho register)
-//     await redisClient.setEx(`otp:register:${email}`, 120, otp);
-
-//     // Gửi OTP qua email
-//     await sendMail(email, "Mã OTP đăng ký", `Mã OTP đăng ký của bạn: ${otp}`);
-
-//     res.status(200).json({ message: "OTP đã gửi về email" });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Gửi OTP thất bại" });
-//   }
-// };
-
 export const resendOtpRegister = async (req, res) => {
   try {
     const { email, userName } = req.body;
@@ -78,6 +47,7 @@ export const verifyOtpRegister = async(req, res) =>{
     const { email, otp } = req.body;
     const savedOtp = await redisClient.get(`otp:register:${email}`);
     if (!savedOtp) return res.status(400).json({ message: "OTP hết hạn hoặc không tồn tại" });
+    console.log(otp, savedOtp);
     if (savedOtp !== otp) return res.status(400).json({ message: "OTP không đúng" });
     
     // Cập nhật user thành active

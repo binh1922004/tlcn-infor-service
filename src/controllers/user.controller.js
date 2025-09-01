@@ -33,6 +33,7 @@ export const updateUser = async (req, res, next) => {
   try {
     const username = req.userName;
     const userUpdate = req.body;
+
     const userFound = await userModel.findByUsername(username);
     if (username !== userFound.userName) {
       return response.sendError(res, "Bad request", 401);
@@ -56,6 +57,7 @@ export const updateAvatar = async (req, res, next) => {
   try {
     const { avatar } = req.body;
     const userName = req.userName;
+    console.log(avatar);
     if (!avatar || !avatar.startsWith("https://res.cloudinary.com/")) {
       return response.sendError(res, "Invalid avatar URL", 400);
     }
