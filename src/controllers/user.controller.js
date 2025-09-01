@@ -34,28 +34,6 @@ export const updateUser = async (req, res, next) => {
     const username = req.userName;
     const userUpdate = req.body;
 
-<<<<<<< Updated upstream
-		const userFound = await userModel.findByUsername(username)
-		if (username !== userFound.userName){
-			return response.sendError(res, 'Bad request', 404)
-		}
-		for (let key in userUpdate){
-			userFound[key] = userUpdate[key]
-		}
-		await userFound.save()
-		return response.sendSuccess(res, {
-			_id: userFound._id,
-			userName: userFound.userName,
-			fullName: userFound.fullName,
-			isOwner: req.userName != null && userFound.userName === req.userName,
-			dob: userFound.dob
-		})
-	}
-	catch (err) {
-		next(err)
-	}
-}
-=======
     const userFound = await userModel.findByUsername(username);
     if (username !== userFound.userName) {
       return response.sendError(res, "Bad request", 401);
@@ -79,6 +57,7 @@ export const updateAvatar = async (req, res, next) => {
   try {
     const { avatar } = req.body;
     const userName = req.userName;
+    console.log(avatar);
     if (!avatar || !avatar.startsWith("https://res.cloudinary.com/")) {
       return response.sendError(res, "Invalid avatar URL", 400);
     }
@@ -108,4 +87,3 @@ export const updateAvatar = async (req, res, next) => {
     return response.sendError(res, "Internal server error", 500);
   }
 };
->>>>>>> Stashed changes

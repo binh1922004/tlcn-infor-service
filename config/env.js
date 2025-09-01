@@ -8,6 +8,6 @@ export const config = {
     refreshTokenKey: process.env.REFRESH_TOKEN_KEY,
     refreshTokenLife: process.env.REFRESH_TOKEN_LIFE,
     email: process.env.EMAIL,
-    passEmail: process.env.PASSWORD_EMAIL
+    passEmail: process.env.PASSWORD_EMAIL,
+    
 }
-

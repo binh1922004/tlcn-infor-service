@@ -1,16 +1,9 @@
-<<<<<<< Updated upstream
 import express from 'express';
 import userRoutes from './routes/user.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import cookieParser from "cookie-parser";
-=======
-import express from "express";
-import userRoutes from "./routes/user.routes.js";
-import authRoutes from "./routes/auth.routes.js";
 import cors from "cors";
 const app = express();
->>>>>>> Stashed changes
-
 app.use(
   cors({
     origin: [
@@ -29,15 +22,9 @@ app.use(
   })
 );
 
-<<<<<<< Updated upstream
 app.use(express.json())
 app.use(cookieParser())
 app.use('/api/users', userRoutes)
 app.use('/api/auth', authRoutes)
-=======
-app.use(express.json());
-app.use("/api/users", userRoutes);
-app.use("/api/auth", authRoutes);
->>>>>>> Stashed changes
 
 export default app;

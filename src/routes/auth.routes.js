@@ -7,7 +7,8 @@ const router = express.Router()
 
 router.post('/register', authController.createUser)
 router.post('/', authController.login)
-
+router.get('/me', authController.getCurrentUser);
+router.post('/logout', authController.logout);
 //refresh Token
 router.post('/refresh', authController.refreshToken)
 
