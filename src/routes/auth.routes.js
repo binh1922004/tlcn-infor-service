@@ -2,12 +2,16 @@ import * as authController from "../controllers/auth.controller.js";
 import express from 'express';
 import { forgotPasswordSendOtp, forgotPasswordVerifyOtp, resetPassword } from "../controllers/forgotPassword.controller.js";
 import { verifyOtpRegister, resendOtpRegister } from "../controllers/otp.controller.js";
+import {authenticateToken} from "../middlewares/auth.middleware.js";
 const router = express.Router()
 
 
 router.post('/register', authController.createUser)
 router.post('/', authController.login)
-router.get('/me', authController.getCurrentUser);
+router.get('/google', authController.loginWithGoogle)
+router.get('/google/callback', authController.googleCallback)
+
+router.get('/me', authenticateToken, authController.getCurrentUser);
 router.post('/logout', authController.logout);
 //refresh Token
 router.post('/refresh', authController.refreshToken)

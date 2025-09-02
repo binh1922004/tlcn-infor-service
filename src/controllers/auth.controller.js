@@ -6,11 +6,13 @@ import {config} from "../../config/env.js";
 import ms from 'ms';
 import jwt from "jsonwebtoken";
 import {generateToken} from "../method/auth.method.js";
+import AuthGoogleController from "./google.controller.js";
+
 import redisClient from "../utils/redisClient.js";
 import sendMail from "../utils/sendMail.js";
 import crypto from 'crypto';
 const SALT_ROUNDS = 10
-
+const authGoogleController = new AuthGoogleController();
 
 const sendOtpToEmail = async (email, userName) => {
   try {
@@ -64,7 +66,7 @@ export const createUser = async (req, res, next) => {
 					message: 'User created successfully but OTP sending failed. Please try to resend OTP.',
 					user: createdUser
 				});
-			}		
+			}
 		}
 	} 
 	catch (error) {
@@ -130,23 +132,31 @@ function setRefreshCookie(res, token) {
 	});
 }
 
+function setEmailCookie(res, token) {
+	res.cookie('email', token, {
+		httpOnly: true,
+		path: '/api/auth/onboarding',
+		maxAge: ms(config.refreshTokenLife),
+	});
+}
+
+function setAccessToken(res, token) {
+	res.cookie('access_token', token, {
+		httpOnly: true,              // tránh XSS
+		path: '/',
+		maxAge: ms(config.accessTokenLife)
+	});
+}
+
 export const getCurrentUser = async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return response.sendError(res, "Token không hợp lệ", 401);
-    }
-    
-    const token = authHeader.substring(7); // Remove 'Bearer '
-    
-    const decoded = jwt.verify(token, config.accessTokenKey);
-    const user = await userModel.findOne({ userName: decoded.userName });
-    
+    const userName = req.userName;
+    const user = await userModel.findOne({ userName: userName });
+
     if (!user) {
       return response.sendError(res, "User không tồn tại", 404);
     }
-    
+
     return response.sendSuccess(res, {
       user: {
         id: user._id,
@@ -157,7 +167,7 @@ export const getCurrentUser = async (req, res) => {
         avatar: user.avatar,
       }
     }, "Lấy thông tin user thành công");
-    
+
   } catch (error) {
     console.error('❌ GetCurrentUser error:', error);
     return response.sendError(res, "Token không hợp lệ", 401);
@@ -168,7 +178,7 @@ export const logout = async (req, res) => {
   try {
     console.log('🔄 Logout request received');
     console.log('🔍 Request cookies:', req.cookies);
-    
+
     // ✅ Clear refresh token cookie
     res.clearCookie('refresh_token', {
       httpOnly: true,
@@ -176,13 +186,40 @@ export const logout = async (req, res) => {
       secure: process.env.NODE_ENV === 'production', // ✅ HTTPS in production
       sameSite: 'lax' // ✅ CSRF protection
     });
-    
+
     console.log('✅ Refresh token cookie cleared');
-    
+
     return response.sendSuccess(res, {}, "Đăng xuất thành công");
-    
+
   } catch (error) {
     console.error('❌ Logout error:', error);
     return response.sendError(res, "Lỗi server khi đăng xuất", 500);
   }
 };
+
+
+export const loginWithGoogle = async (req, res, next) => {
+	const url = authGoogleController.generateUrl()
+	return res.redirect(url);
+}
+
+export const googleCallback = async (req, res, next) => {
+	const responseData = req.query;
+	const payload = await authGoogleController.callBack(responseData.code);
+	console.log(payload.email);
+	const user = await userModel.findOne({ email: payload.email });
+	if (user) {
+		if (!user.active) {
+			return response.sendError(res, 'Tài khoản chưa được kích hoạt.', 401)
+		}
+		const {accessToken, refreshToken} = authMethod.generateToken(user)
+		console.log('AccessToken: ', accessToken)
+		console.log('RefreshToken: ',refreshToken)
+		setRefreshCookie(res, refreshToken);
+		setAccessToken(res, accessToken);
+		return res.redirect(config.fe_localhost_url + '/profile')
+	}
+	else{
+		setEmailCookie(res, payload.email);
+	}
+}
