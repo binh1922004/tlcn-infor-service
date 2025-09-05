@@ -13,4 +13,6 @@ router.post('/profile/avatar/upload', authenticateToken, upload.single('avatar')
 router.get('/profile/avatar/current', authenticateToken, getCurrentUserAvatar) // Avatar của user đang login
 router.get('/profile/avatar/:userName', getUserAvatar) // Avatar của user bất kỳ
 router.delete('/profile/avatar/:userName', authenticateToken, deleteAvatar)
+
+router.get('/username/check', userController.checkUsername)
 export default router

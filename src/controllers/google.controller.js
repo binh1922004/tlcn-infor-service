@@ -4,10 +4,7 @@ export default class AuthGoogleController {
     #oauthClient;
     // generate a url that asks permissions for Blogger and Google Calendar scopes
     #scopes = [
-        'https://www.googleapis.com/auth/blogger',
-        'https://www.googleapis.com/auth/calendar',
         'email',
-        'openid',
         'profile'
     ];
     constructor() {
