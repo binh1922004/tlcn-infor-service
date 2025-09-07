@@ -1,5 +1,15 @@
 import response from "../helpers/response.js";
 import userModel from "../models/user.models.js";
+
+export const checkUsername = async (req, res, next) => {
+  const userName = req.query.username;
+  const user = await userModel.findOne({ userName: userName });
+  if (user){
+    return response.sendError(res, 'Existed username', 409)
+  }
+  return response.sendSuccess(res, true);
+}
+
 export const getUsers = async (req, res, next) => {
   try {
     const users = await userModel.find();

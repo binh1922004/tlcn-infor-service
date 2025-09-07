@@ -6,11 +6,14 @@ import {config} from "../../config/env.js";
 import ms from 'ms';
 import jwt from "jsonwebtoken";
 import {generateToken} from "../method/auth.method.js";
+import AuthGoogleController from "./google.controller.js";
+
 import redisClient from "../utils/redisClient.js";
 import sendMail from "../utils/sendMail.js";
 import crypto from 'crypto';
+import {mapToUserDto} from "../helpers/dto.helpers.js";
 const SALT_ROUNDS = 10
-
+const authGoogleController = new AuthGoogleController();
 
 const sendOtpToEmail = async (email, userName) => {
   try {
@@ -57,14 +60,14 @@ export const createUser = async (req, res, next) => {
 			if (otpResult.success) {
 				return response.sendSuccess(res, {
 					message: 'User created successfully. Please check your email for OTP verification.',
-					user: createdUser
+					user: mapToUserDto(createdUser)
 				});
 			} else {
 				return response.sendSuccess(res, {
 					message: 'User created successfully but OTP sending failed. Please try to resend OTP.',
-					user: createdUser
+					user: mapToUserDto(createdUser)
 				});
-			}		
+			}
 		}
 	} 
 	catch (error) {
@@ -90,10 +93,10 @@ export const login = async (req, res, next) => {
 				return response.sendError(res, 'Tài khoản chưa được kích hoạt. Hãy xác nhận mã OTP cho tài khoản mình', 401)
 			}
 			const {accessToken, refreshToken} = authMethod.generateToken(user)
-			setRefreshCookie(res, refreshToken);
+			actionRefreshCookie(res, refreshToken);
 			return response.sendSuccess(res, {
 				accessToken,
-				user
+				user: mapToUserDto(user)
 			})
 		}
 	}
@@ -113,7 +116,7 @@ export const refreshToken = async (req, res, next) => {
 		const user = await userModel.findByUsername(payload.userName);
 		console.log(user);
 		const {accessToken, refreshToken} = generateToken(user);
-		setRefreshCookie(res, refreshToken);
+		actionRefreshCookie(res, refreshToken);
 
 		return response.sendSuccess(res, {accessToken: accessToken});
 	} catch (e) {
@@ -122,42 +125,70 @@ export const refreshToken = async (req, res, next) => {
 	}
 }
 
-function setRefreshCookie(res, token) {
-	res.cookie('refresh_token', token, {
-		httpOnly: true,
-		path: '/api/auth/refresh',        // chỉ gửi cookie tới /auth/*
-		maxAge: ms(config.refreshTokenLife),
-	});
+function actionRefreshCookie(res, token,  isDel=false) {
+	if (isDel){
+		res.clearCookie('refresh_token', {
+			httpOnly: true,
+			path: '/api/auth/refresh',        // chỉ gửi cookie tới /auth/*
+			maxAge: ms(config.refreshTokenLife),
+		});
+	}
+	else{
+		res.cookie('refresh_token', token, {
+			httpOnly: true,
+			path: '/api/auth/refresh',        // chỉ gửi cookie tới /auth/*
+			maxAge: ms(config.refreshTokenLife),
+		});
+	}
+}
+
+function actionEmailCookie(res, email, isDel=false) {
+	if (isDel){
+		res.clearCookie('email', {
+			httpOnly: true,
+			path: '/api/auth/onboarding',
+			maxAge: 60 * 10 * 1000,
+		});
+	}
+	else{
+		res.cookie('email', email, {
+			httpOnly: true,
+			path: '/api/auth/onboarding',
+			maxAge: 60 * 10 * 1000,
+		});
+	}
+}
+
+function actionAccessToken(res, token, isDel=false) {
+	if (isDel){
+		res.clearCookie('access_token', {
+			httpOnly: true,              // tránh XSS
+			path: '/',
+			maxAge: ms(config.accessTokenLife)
+		});
+	}
+	else{
+		res.cookie('access_token', token, {
+			httpOnly: true,              // tránh XSS
+			path: '/',
+			maxAge: ms(config.accessTokenLife)
+		});
+	}
 }
 
 export const getCurrentUser = async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return response.sendError(res, "Token không hợp lệ", 401);
-    }
-    
-    const token = authHeader.substring(7); // Remove 'Bearer '
-    
-    const decoded = jwt.verify(token, config.accessTokenKey);
-    const user = await userModel.findOne({ userName: decoded.userName });
-    
+    const userName = req.userName;
+    const user = await userModel.findOne({ userName: userName });
+
     if (!user) {
       return response.sendError(res, "User không tồn tại", 404);
     }
-    
+
     return response.sendSuccess(res, {
-      user: {
-        id: user._id,
-        userName: user.userName,
-        email: user.email,
-        fullName: user.fullName,
-        active: user.active,
-        avatar: user.avatar,
-      }
+      user: mapToUserDto(user)
     }, "Lấy thông tin user thành công");
-    
+
   } catch (error) {
     console.error('❌ GetCurrentUser error:', error);
     return response.sendError(res, "Token không hợp lệ", 401);
@@ -168,21 +199,79 @@ export const logout = async (req, res) => {
   try {
     console.log('🔄 Logout request received');
     console.log('🔍 Request cookies:', req.cookies);
-    
+
     // ✅ Clear refresh token cookie
-    res.clearCookie('refresh_token', {
-      httpOnly: true,
-      path: '/api/auth/refresh', // ✅ Same path as setRefreshCookie
-      secure: process.env.NODE_ENV === 'production', // ✅ HTTPS in production
-      sameSite: 'lax' // ✅ CSRF protection
-    });
-    
+    actionRefreshCookie(res, "", true);
+
+	actionAccessToken(res, "", true);
+
     console.log('✅ Refresh token cookie cleared');
-    
+
     return response.sendSuccess(res, {}, "Đăng xuất thành công");
-    
+
   } catch (error) {
     console.error('❌ Logout error:', error);
     return response.sendError(res, "Lỗi server khi đăng xuất", 500);
   }
 };
+
+
+export const loginWithGoogle = async (req, res, next) => {
+	const url = authGoogleController.generateUrl()
+	return res.redirect(url);
+}
+
+export const googleCallback = async (req, res, next) => {
+	const responseData = req.query;
+	const payload = await authGoogleController.callBack(responseData.code);
+	console.log(payload.email);
+	const user = await userModel.findOne({ email: payload.email });
+	if (user) {
+		if (!user.active) {
+			return res.redirect(config.fe_localhost_url + '/onboarding');
+		}
+		const {accessToken, refreshToken} = authMethod.generateToken(user)
+		actionRefreshCookie(res, refreshToken);
+		actionAccessToken(res, accessToken);
+		return res.redirect(config.fe_localhost_url + '/profile')
+	}
+	else{
+		actionEmailCookie(res, payload.email);
+		const user = {
+			email: payload.email,
+			fullName: payload.name,
+			avatar: payload.picture,
+		}
+		await userModel.create(user)
+		return res.redirect(config.fe_localhost_url + '/onboarding');
+	}
+}
+
+export const onboarding = async (req, res) => {
+	const email = req.cookies?.email;
+	if (!email) return response.sendError(res, 'Not found email', 404);
+	try{
+		const user = await userModel.findOne({email: email, active: false});
+		if (!user) {
+			return response.sendError(res, 'Not found user', 404);
+		}
+		const userName = req.query.username;
+		if (!userName) {
+			return response.sendError(res, 'Missing userName', 404);
+		}
+		user.userName = userName;
+		user.active = true;
+		await user.save();
+		const {accessToken, refreshToken} = authMethod.generateToken(user)
+		actionRefreshCookie(res, refreshToken);
+		actionEmailCookie(res, "", true);
+		return response.sendSuccess(res, {
+			accessToken,
+			user: mapToUserDto(user)
+		})
+	}
+	catch (e){
+		console.error(e);
+		throw e;
+	}
+}

@@ -4,11 +4,15 @@ import { config } from '../../config/env.js';
 
 export const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization']
-    const token = authHeader && authHeader.split(' ')[1]
+    let token = authHeader && authHeader.split(' ')[1]
 
-    if (token == null)
-        return response.sendError(res, "Unauthenticated", 401)
-
+    if (token == null) {
+        token = req.cookies?.access_token;
+        console.log('AccessToken from middleware: ', token);
+        if (!token){
+            return response.sendError(res, "Unauthenticated", 401)
+        }
+    }
     jwt.verify(token, config.accessTokenKey, (err, user) => {
         if (err)
             return response.sendError(res, "BadRequest", 401);

@@ -9,5 +9,7 @@ export const config = {
     refreshTokenLife: process.env.REFRESH_TOKEN_LIFE,
     email: process.env.EMAIL,
     passEmail: process.env.PASSWORD_EMAIL,
-    
+    client_id: process.env.CLIENT_ID,
+    client_secret_id: process.env.CLIENT_SECRET_ID,
+    fe_localhost_url: process.env.FE_LOCALHOST_URL,
 }
