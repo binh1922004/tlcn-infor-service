@@ -7,5 +7,6 @@ export const mapToUserDto = (user) => {
         fullName: user.fullName,
         active: user.active,
         avatar: user.avatar,
+        role: user.role
     }
 }
