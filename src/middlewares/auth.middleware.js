@@ -17,6 +17,7 @@ export const authenticateToken = async (req, res, next) => {
         if (err)
             return response.sendError(res, "BadRequest", 401);
         //Assign user info from JWT to next req. 
+        req.user = user;
         req.userName = user.userName
         next()
     })

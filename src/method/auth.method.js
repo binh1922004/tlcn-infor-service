@@ -15,7 +15,7 @@ export const generateToken = (user) => {
 }
 
 const generateAccessToken = (user) => {
-    const payload = {userName: user.userName, role: 'USER'}
+    const payload = {userName: user.userName, role: user.role, _id: user._id}
     return generateJwt(payload, config.accessTokenKey, config.accessTokenLife);
 }
 
