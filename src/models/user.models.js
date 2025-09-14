@@ -13,7 +13,8 @@ const userSchema = new mongoose.Schema({
       type: String,
       enum: ["user", "admin", "teacher"],
       default: "user",
-    }
+    },
+    isGoogle: {type: Boolean, default: false},
 }, {
     timestamps: true //auto generate createAt and updateAt
 })

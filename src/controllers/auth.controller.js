@@ -7,6 +7,7 @@ import ms from 'ms';
 import jwt from "jsonwebtoken";
 import {generateToken} from "../method/auth.method.js";
 import AuthGoogleController from "./google.controller.js";
+import {v4 as uuid} from "uuid"
 
 import redisClient from "../utils/redisClient.js";
 import sendMail from "../utils/sendMail.js";
@@ -241,7 +242,10 @@ export const googleCallback = async (req, res, next) => {
 			email: payload.email,
 			fullName: payload.name,
 			avatar: payload.picture,
+			userName: uuid(),
+			isGoogle: true
 		}
+		console.log(user);
 		await userModel.create(user)
 		return res.redirect(config.fe_localhost_url + '/onboarding');
 	}
