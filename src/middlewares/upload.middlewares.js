@@ -17,4 +17,19 @@ export const upload = multer({
   },
 });
 
+// Middleware riêng cho file ZIP
+export const uploadZip = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB cho file ZIP
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/zip' ||
+        file.mimetype === 'application/x-zip-compressed') {
+      cb(null, true);
+    } else {
+      cb(new Error('Chỉ chấp nhận file ZIP!'), false);
+    }
+  },
+});
 export default upload;
