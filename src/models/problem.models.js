@@ -14,6 +14,7 @@ const problemSchema = new mongoose.Schema({
     numberOfTestCases: {type: Number, default: 0},
     time: {type: Number, default: 1},
     memory: {type: Number, default: 512},
+    isActive: {type: Boolean, default: false},
 }, {
     timestamps: true //auto generate createAt and updateAt
 })
