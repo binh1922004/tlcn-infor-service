@@ -77,26 +77,46 @@ export const getPost = async (req, res) => {
     return response.sendError(res, "Failed to get post");
   }
 };
+const addLikeStatus = (posts, userId) => {
+  return posts.map(post => {
+    const likedUserIds = post.likes?.map(like => like.user?.toString()) || [];
+    
+    return {
+      ...post,
+      isLiked: userId ? likedUserIds.includes(userId.toString()) : false,
+      likesCount: post.likesCount || 0,
+      likedBy: likedUserIds, // Optional: danh sách userId đã like
+      likes: undefined // Remove likes array
+    };
+  });
+};
 
 export const getPosts = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
     const limit = Math.min(50, parseInt(req.query.limit || "20", 10));
     const skip = (page - 1) * limit;
+    const userId = req.user?._id;
 
     const filter = { isPublished: true };
     if (req.query.author) filter.author = req.query.author;
     if (req.query.hashtag) filter.hashtags = req.query.hashtag;
-
+    
     const posts = await Post.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .populate("author", "userName fullName avatar")
+      .lean() 
       .exec();
 
+    const postsWithLikeStatus = addLikeStatus(posts, userId);
     const total = await Post.countDocuments(filter);
-    return response.sendSuccess(res, { posts, meta: { page, limit, total } });
+    
+    return response.sendSuccess(res, { 
+      posts: postsWithLikeStatus, 
+      meta: { page, limit, total } 
+    });
   } catch (err) {
     console.error("getPosts error", err);
     return response.sendError(res, "Failed to list posts");
@@ -204,73 +224,69 @@ export const deletePost = async (req, res) => {
 /**
  * Likes/Shares/Views - use atomic updates to avoid race conditions
  */
-export const addLike = async (req, res) => {
+
+export const toggleLike = async (req, res) => {
   try {
     const postId = req.params.id;
     const userId = req.user._id;
 
-    const result = await Post.updateOne(
-      { _id: postId, "likes.user": { $ne: userId } },
-      { $push: { likes: { user: userId } }, $inc: { likesCount: 1 } }
-    ).exec();
+    const post = await Post.findById(postId).select("likes likesCount").lean();
+    if (!post) {
+      return response.sendError(res, "Post not found", 404);
+    }
 
-    if (result.nModified === 0)
-      return response.sendSuccess(res, null, "Already liked");
+    const hasLiked = post.likes.some(like => like.user.toString() === userId.toString());
 
-    // Emit socket event cập nhật count
+    let updatedPost;
+    let message;
+
+    if (hasLiked) {
+      await Post.updateOne(
+        { _id: postId },
+        { 
+          $pull: { likes: { user: userId } },
+          $inc: { likesCount: -1 }
+        }
+      ).exec();
+      
+      message = "Unliked";
+    } else {
+      await Post.updateOne(
+        { _id: postId },
+        { 
+          $push: { likes: { user: userId } },
+          $inc: { likesCount: 1 }
+        }
+      ).exec();
+      
+      message = "Liked";
+    }
+
+    updatedPost = await Post.findById(postId)
+      .select("likesCount commentsCount sharesCount likes")
+      .lean();
+
+    const isLiked = updatedPost.likes.some(like => like.user.toString() === userId.toString());
+
+    // Emit socket event
     const io = req.app.get("io");
     if (io) {
-      const post = await Post.findById(postId)
-        .select("likesCount commentsCount sharesCount")
-        .lean();
       io.emit("post:counts", {
         postId,
-        likesCount: post?.likesCount ?? 0,
-        commentsCount: post?.commentsCount ?? 0,
-        sharesCount: post?.sharesCount ?? 0,
+        likesCount: updatedPost.likesCount,
+        commentsCount: updatedPost.commentsCount,
+        sharesCount: updatedPost.sharesCount,
       });
     }
 
-    return response.sendSuccess(res, null, "Liked");
+    return response.sendSuccess(res, {
+      isLiked,
+      likesCount: updatedPost.likesCount,
+      wasLiked: hasLiked
+    }, message);
   } catch (err) {
-    console.error("addLike error", err);
-    return response.sendError(res, "Failed to add like");
-  }
-};
-
-export const removeLike = async (req, res) => {
-  try {
-    const postId = req.params.id;
-    const userId = req.user._id;
-
-    await Post.updateOne(
-      { _id: postId },
-      { $pull: { likes: { user: userId } }, $set: { likesCount: 0 } }
-    ).exec();
-
-    // Recalculate likesCount to keep consistency
-    await Post.updateOne({ _id: postId }, [
-      { $set: { likesCount: { $size: "$likes" } } },
-    ]).exec();
-
-    // Emit socket event cập nhật count
-    const io = req.app.get("io");
-    if (io) {
-      const post = await Post.findById(postId)
-        .select("likesCount commentsCount sharesCount")
-        .lean();
-      io.emit("post:counts", {
-        postId,
-        likesCount: post?.likesCount ?? 0,
-        commentsCount: post?.commentsCount ?? 0,
-        sharesCount: post?.sharesCount ?? 0,
-      });
-    }
-
-    return response.sendSuccess(res, null, "Unliked");
-  } catch (err) {
-    console.error("removeLike error", err);
-    return response.sendError(res, "Failed to remove like");
+    console.error("toggleLike error", err);
+    return response.sendError(res, "Failed to toggle like");
   }
 };
 
