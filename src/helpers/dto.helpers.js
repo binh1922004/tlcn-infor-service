@@ -10,3 +10,11 @@ export const mapToUserDto = (user) => {
         role: user.role
     }
 }
+export const pageDTO = (data, page, total, limit) => {
+    return {
+        content: data,
+        page : page,
+        total: total,
+        last: page>=total/limit-1
+    }
+}

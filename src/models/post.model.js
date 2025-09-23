@@ -1,4 +1,12 @@
 import mongoose from 'mongoose';
+const imageSchema = new mongoose.Schema({
+  url: { type: String, required: true },
+  publicId: { type: String, required: true },
+  width: { type: Number },
+  height: { type: Number },
+  size: { type: Number },
+  originalName: { type: String }
+});
 const postSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -20,11 +28,7 @@ const postSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  images: [{
-    url: String,
-    publicId: String, // For Cloudinary
-    description: String
-  }],
+  images: [imageSchema],
   hashtags: [{
     type: String,
     trim: true,

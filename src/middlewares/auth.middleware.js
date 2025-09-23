@@ -22,3 +22,37 @@ export const authenticateToken = async (req, res, next) => {
         next()
     })
 }
+export const optionalAuth = (req, res, next) => {
+  try {
+    const authHeader = req.header('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    
+    console.log('🔍 OptionalAuth Debug:', {
+      hasAuthHeader: !!authHeader,
+      hasToken: !!token,
+      tokenPreview: token ? `${token.slice(0, 20)}...` : 'No token'
+    });
+    
+    if (!token) {
+      console.log('🔍 OptionalAuth - No token, proceeding as guest');
+      req.user = null;
+      return next();
+    }
+    
+    // Verify token
+    const decoded = jwt.verify(token, config.accessTokenKey);
+    
+    console.log('🔍 OptionalAuth - Token verified:', {
+      userName: decoded.userName,
+      _id: decoded._id,
+      role: decoded.role
+    });
+    
+    req.user = decoded;
+    next();
+  } catch (error) {
+    console.log('🔍 OptionalAuth - Token invalid, proceeding as guest:', error.message);
+    req.user = null;
+    next();
+  }
+};
