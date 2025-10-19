@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon server.js",
+    "start": "NODE_ENV=production node src/server.js",
+    "dev": "NODE_ENV=dev nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -24,10 +24,12 @@
     "express": "^5.1.0",
     "googleapis": "^159.0.0",
     "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
     "lowdb": "^7.0.1",
     "mongoose": "^8.16.3",
     "ms": "^2.1.3",
     "multer": "^2.0.2",
+    "nanoid": "^5.1.6",
     "nodemailer": "^7.0.5",
     "nodemon": "^3.1.10",
     "passport": "^0.7.0",
@@ -36,10 +38,7 @@
     "redis": "^5.8.2",
     "sanitize-html": "^2.17.0",
     "socket.io": "^4.8.1",
-<<<<<<< Updated upstream
+    "uuid": "^13.0.0",
     "yauzl": "^3.2.0"
-=======
-    "uuid": "^13.0.0"
->>>>>>> Stashed changes
   }
 }

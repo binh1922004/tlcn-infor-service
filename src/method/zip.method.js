@@ -1,6 +1,6 @@
 import yauzl from 'yauzl';
 import path from 'path';
-import { uploadFile, getContentType } from './s3.method.js';
+import { uploadFile, getContentType } from '../service/s3.service.js';
 
 export class CustomZipProcessor {
     async processZipFromBuffer(zipBuffer, originalFileName, s3Prefix = '', problemId) {
@@ -101,6 +101,7 @@ export class CustomZipProcessor {
                     }
 
                     const folderName = pathParts[0];
+                    console.log('📂 Found folder:', folderName);
                     const actualFileName = pathParts[pathParts.length - 1];
                     const fileExtension = path.extname(actualFileName).toLowerCase();
                     console.log(`<UNK> ZIP file ${fileName} is ${fileExtension}`);
@@ -242,6 +243,7 @@ export class CustomZipProcessor {
                 zipfile.on('end', async () => {
                     try {
                         const results = await Promise.all(uploadPromises);
+                        console.log(folderCounter)
                         console.log(`✅ Restructured and uploaded ${results.length} files to S3`);
                         console.log(`📁 Processed ${folderMap.size} folders with sequential IDs`);
 
