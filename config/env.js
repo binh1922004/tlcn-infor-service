@@ -1,5 +1,13 @@
 import dotenv from 'dotenv'
+import kafka from "kafkajs";
+import path from "path";
 dotenv.config()
+// // Xác định môi trường hiện tại
+// const env = process.env.NODE_ENV || 'dev';
+// // Load file .env tương ứng
+// dotenv.config({
+//     path: path.resolve(process.cwd(), `.env.${env}`)
+// });
 export const config = {
     mongodbUri: process.env.MONGODB_URI,
     port: process.env.PORT,
@@ -16,4 +24,6 @@ export const config = {
     aws_secret_key: process.env.AWS_SECRET_ACCESS_KEY,
     bucket_name: process.env.BUCKET_NAME,
     bucket_region: process.env.BUCKET_REGION,
+    kafka_brokers: process.env.KAFKA_BROKER,
+    kafka_submission_topic: process.env.KAFKA_SUBMISSION_TOPIC,
 }

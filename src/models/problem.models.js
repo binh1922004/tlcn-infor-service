@@ -1,8 +1,10 @@
 import mongoose from "mongoose";
+import { customAlphabet } from 'nanoid';
+const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
 
 const problemSchema = new mongoose.Schema({
-    name: {type: String, unique: true},
-    statement: {type: String, required: true, unique: true},
+    name: {type: String},
+    statement: {type: String, required: true},
     input: {type: String},
     output: {type: String, required: true},
     img: { type: [String], default: null },
@@ -15,6 +17,10 @@ const problemSchema = new mongoose.Schema({
     time: {type: Number, default: 1},
     memory: {type: Number, default: 512},
     isActive: {type: Boolean, default: false},
+    numberOfSubmissions: {type: Number, default: 0},
+    numberOfAccepted: {type: Number, default: 0},
+    difficulty: {type: String, default: "Easy"},
+    shortId: { type: String, default: () => nanoid() }
 }, {
     timestamps: true //auto generate createAt and updateAt
 })
