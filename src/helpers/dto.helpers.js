@@ -13,8 +13,8 @@ export const mapToUserDto = (user) => {
 export const pageDTO = (data, total, page, limit) => {
     return {
         content: data,
-        page : page,
-        total: total,
+        page : Number(page),
+        total: Number(total),
         totalPages: Math.ceil(total / limit),
         last: page>=total/limit-1
     }

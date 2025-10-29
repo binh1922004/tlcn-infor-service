@@ -1,38 +1,85 @@
-import { Server } from 'socket.io';
-import { createClient } from 'redis';
-import { createAdapter } from '@socket.io/redis-adapter';
-import { verifyAuthToken } from '../utils/auth.js'; 
+import {Server} from "socket.io";
+import jwt from "jsonwebtoken";
+import {config} from "../../config/env.js";
+import response from "../helpers/response.js";
 
-export async function initSocket(httpServer, { redisUrl } = {}) {
-  const io = new Server(httpServer, {
-    cors: { origin: '*' } 
-  });
+const SocketSingleton = (function () {
+    let instance;
 
-  if (redisUrl) {
-    const pubClient = createClient({ url: redisUrl });
-    const subClient = pubClient.duplicate();
-    await Promise.all([pubClient.connect(), subClient.connect()]);
-    io.adapter(createAdapter(pubClient, subClient));
-  }
+    function createInstance() {
+        console.log('Create Socket.io instance on port 8888');
+        const io = new Server(8080, {
+            cors: {
+                origin: "*",
+                methods: ["GET", "POST"]
+            }
+        });
+        io.use((socket, next) => {
+            const token = socket.handshake.auth.token;
+            console.log(`Received token ${token}`);
+            if (!token) {
+                next();
+            }
+            jwt.verify(token, config.accessTokenKey, (err, user) => {
+                if (err)
+                    return next(new Error("Authentication error: Invalid token"));
+                //Assign user info from JWT to next req.
+                socket.userId = user._id;
+                next()
+            })
+        });
+        let onlineUsers = new Map();
+        io.on("connection", (socket) => {
+            console.log("✅ A user connected:", socket.id);
+            socket.on("disconnect", () => {
+                for (let [userId, socketId] of onlineUsers.entries()) {
+                    if (socketId === socket.id) {
+                        onlineUsers.delete(userId);
+                        console.log(`✗ User ${userId} disconnected`);
+                        break;
+                    }
+                }
+            });
 
-  // auth middleware
-  io.use(async (socket, next) => {
-    try {
-      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-      if (!token) throw new Error('No token');
-      const user = await verifyAuthToken(token);
-      socket.user = user;
-      return next();
-    } catch (err) {
-      return next(new Error('Unauthorized'));
+            socket.on('register', () => {
+                const userId = socket.userId;
+                onlineUsers.set(userId, socket.id);
+                console.log(`✓ User ${userId} registered with socket ${socket.id}`);
+
+                socket.emit('connected', {
+                    userId,
+                    message: 'Connected to notification system',
+                    onlineUsers: onlineUsers.size
+                });
+            });
+        });
+
+        return {
+            sendMessageToSocketId: function (userId, event, data){
+                const socketId = onlineUsers.get(userId);
+                if (socketId){
+                    console.log(`--> Sending event ${event} to user ${userId} on socket ${socketId}`);
+                    io.to(socketId).emit(event, data)
+                }
+            }
+        }
     }
-  });
+    return {
+        getInstance: function () {
+            if (!instance) {
+                instance = createInstance();
+            }
+            return instance;
+        }
+    }
+})();
 
-  io.on('connection', (socket) => {
-    // join private room
-    socket.join(`user:${socket.user._id}`);
-    if (socket.user.role === 'admin') socket.join('admins');
-  });
+export const sendMessageToUser = (userId, event, data) => {
+    console.log(`<UNK> User ${userId} sendMessageToUser ${event}`);
+    const socket = SocketSingleton.getInstance();
+    socket.sendMessageToSocketId(userId, event, data);
+}
 
-  return io;
+export const setupSocket = () => {
+    SocketSingleton.getInstance();
 }
