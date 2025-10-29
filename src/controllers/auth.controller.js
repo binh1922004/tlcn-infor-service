@@ -51,6 +51,7 @@ export const createUser = async (req, res, next) => {
 			let newUser = req.body
 			newUser.password = hashPassword
 			newUser.active = false 
+			newUser.role = 'user'
 
 			const createdUser = await userModel.create(newUser)
 			if (!createdUser){
@@ -108,14 +109,12 @@ export const login = async (req, res, next) => {
 }
 
 export const refreshToken = async (req, res, next) => {
-	// console.log('Refresh token', req.cookies.refresh_token);
 	const refresh = req.cookies?.refresh_token;
 	if (!refresh) return res.status(401).json({ error: 'Missing refresh token' });
 
 	try {
 		const payload = jwt.verify(refresh, config.refreshTokenKey);
 		const user = await userModel.findByUsername(payload.userName);
-		console.log(user);
 		const {accessToken, refreshToken} = generateToken(user);
 		actionRefreshCookie(res, refreshToken);
 
@@ -191,27 +190,20 @@ export const getCurrentUser = async (req, res) => {
     }, "Lấy thông tin user thành công");
 
   } catch (error) {
-    console.error('❌ GetCurrentUser error:', error);
+    console.error('GetCurrentUser error:', error);
     return response.sendError(res, "Token không hợp lệ", 401);
   }
 }
 
 export const logout = async (req, res) => {
   try {
-    console.log('🔄 Logout request received');
-    console.log('🔍 Request cookies:', req.cookies);
-
-    // ✅ Clear refresh token cookie
+    // Clear refresh token cookie
     actionRefreshCookie(res, "", true);
-
-	actionAccessToken(res, "", true);
-
-    console.log('✅ Refresh token cookie cleared');
-
+		actionAccessToken(res, "", true);
     return response.sendSuccess(res, {}, "Đăng xuất thành công");
 
   } catch (error) {
-    console.error('❌ Logout error:', error);
+    console.error('Logout error:', error);
     return response.sendError(res, "Lỗi server khi đăng xuất", 500);
   }
 };
@@ -245,7 +237,6 @@ export const googleCallback = async (req, res, next) => {
 			userName: uuid(),
 			isGoogle: true
 		}
-		console.log(user);
 		await userModel.create(user)
 		return res.redirect(config.fe_localhost_url + '/onboarding');
 	}

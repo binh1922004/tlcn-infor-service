@@ -25,34 +25,79 @@ export const authenticateToken = async (req, res, next) => {
 export const optionalAuth = (req, res, next) => {
   try {
     const authHeader = req.header('Authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    
-    console.log('🔍 OptionalAuth Debug:', {
-      hasAuthHeader: !!authHeader,
-      hasToken: !!token,
-      tokenPreview: token ? `${token.slice(0, 20)}...` : 'No token'
-    });
-    
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null; 
     if (!token) {
-      console.log('🔍 OptionalAuth - No token, proceeding as guest');
       req.user = null;
       return next();
-    }
-    
+    }  
     // Verify token
-    const decoded = jwt.verify(token, config.accessTokenKey);
-    
-    console.log('🔍 OptionalAuth - Token verified:', {
-      userName: decoded.userName,
-      _id: decoded._id,
-      role: decoded.role
-    });
-    
+    const decoded = jwt.verify(token, config.accessTokenKey);   
     req.user = decoded;
     next();
   } catch (error) {
-    console.log('🔍 OptionalAuth - Token invalid, proceeding as guest:', error.message);
     req.user = null;
     next();
+  }
+};
+
+// Middleware kiểm tra quyền admin
+export const verifyAdmin = (req, res, next) => {
+  try {
+    // Kiểm tra xem user đã được authenticate chưa
+    if (!req.user) {
+      return response.sendError(res, "Unauthenticated", 401);
+    }
+    // Kiểm tra role có phải admin không
+    if (req.user.role !== 'admin') {
+      return response.sendError(res, "Access denied. Admin role required.", 403);
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in verifyAdmin middleware:', error);
+    return response.sendError(res, "Internal server error", 500);
+  }
+};
+
+// Middleware kiểm tra quyền admin hoặc owner
+export const verifyAdminOrOwner = (req, res, next) => {
+  try {
+    if (!req.user) {
+      return response.sendError(res, "Unauthenticated", 401);
+    }
+
+    // Cho phép admin hoặc chính user đó
+    const userId = req.params.userId || req.params.userName;
+    const isAdmin = req.user.role === 'admin';
+    const isOwner = req.user._id === userId || req.user.userName === userId;
+
+    if (!isAdmin && !isOwner) {
+      return response.sendError(res, "Access denied. You don't have permission to perform this action.", 403);
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in verifyAdminOrOwner middleware:', error);
+    return response.sendError(res, "Internal server error", 500);
+  }
+};
+
+export const verifyAdminOrTeacher = (req, res, next) => {
+  try {
+    // Kiểm tra xem user đã được authenticate chưa
+    if (!req.user) {
+      return response.sendError(res, "Unauthenticated", 401);
+    }
+
+    // Kiểm tra role có phải admin hoặc teacher không
+    const userRole = req.user.role;
+    if (userRole !== 'admin' && userRole !== 'teacher') {
+      return response.sendError(res, "Access denied. Only admin or teacher can perform this action.", 403);
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in verifyAdminOrTeacher middleware:', error);
+    return response.sendError(res, "Internal server error", 500);
   }
 };
