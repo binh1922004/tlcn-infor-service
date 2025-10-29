@@ -359,18 +359,22 @@ commentSchema.post('save', async function(doc) {
 });
 
 // Pre-remove middleware để cleanup references
-commentSchema.pre('remove', async function(next) {
+commentSchema.pre('findOneAndDelete', async function(next) {
   try {
+    // Get the document that will be deleted
+    const doc = await this.model.findOne(this.getFilter());
+    if (!doc) return next();
+
     // Remove this comment from parent's replies array
-    if (this.parentComment) {
-      const parentComment = await this.constructor.findById(this.parentComment);
+    if (doc.parentComment) {
+      const parentComment = await this.model.findById(doc.parentComment);
       if (parentComment) {
-        await parentComment.removeReply(this._id);
+        await parentComment.removeReply(doc._id);
       }
     }
     
     // Remove all replies of this comment
-    await this.constructor.deleteMany({ parentComment: this._id });
+    await this.model.deleteMany({ parentComment: doc._id });
     
     next();
   } catch (error) {

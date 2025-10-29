@@ -86,13 +86,7 @@ export const getPostComments = async (req, res) => {
     const isGuest = !userId;
     const shouldIncludeLikedBy = includeLikedBy === 'true';
     
-    console.log('🔍 getPostComments Debug:', {
-      postId: postId?.slice(-4),
-      userId: userId ? userId.toString().slice(-4) : 'Guest',
-      isGuest,
-      sortBy,
-      includeLikedBy: shouldIncludeLikedBy
-    });
+
     
     const post = await Post.findById(postId);
     if (!post) {
@@ -116,7 +110,6 @@ export const getPostComments = async (req, res) => {
         break;
     }
 
-    console.log('🔧 Applied sort options:', sortOptions);
 
     // Enhanced query để include likes data
     const comments = await Comment.find({
@@ -146,21 +139,10 @@ export const getPostComments = async (req, res) => {
       .limit(parseInt(limit))
       .lean(); // Use lean for better performance
 
-    console.log('Raw comments found:', comments.length);
 
     // Apply like status using helper function
     const commentsWithLikeStatus = addCommentLikeStatus(comments, userId);
 
-    console.log('Processed comments sample:', 
-      commentsWithLikeStatus.slice(0, 2).map(c => ({
-        id: c._id?.toString().slice(-4),
-        content: c.content?.slice(0, 20) + '...',
-        isLiked: c.isLiked,
-        likesCount: c.likesCount,
-        likedByCount: c.likedByUserIds?.length || 0,
-        hasReplies: c.replies?.length > 0
-      }))
-    );
 
     // Get stats
     const stats = await Comment.getPostCommentStats(postId);
@@ -188,7 +170,6 @@ export const getPostComments = async (req, res) => {
       }
     };
     
-    console.log('Response meta:', responseData.meta);
     
     return response.sendSuccess(
       res,
@@ -279,9 +260,8 @@ export const deleteComment = async (req, res) => {
       );
     }
 
-    //    Pre-remove middleware sẽ tự động cleanup references và replies
-    await comment.remove();
-
+    //Pre-remove middleware sẽ tự động cleanup references và replies
+    await Comment.findByIdAndDelete(commentId);
     return response.sendSuccess(res, null, "Comment deleted successfully");
   } catch (error) {
     console.error("Error deleting comment:", error);
@@ -293,11 +273,6 @@ export const toggleLikeComment = async (req, res) => {
   try {
     const { commentId } = req.params;
     const userId = req.user._id;
-
-    console.log('toggleLikeComment:', {
-      commentId: commentId?.slice(-4),
-      userId: userId.toString().slice(-4)
-    });
 
     const comment = await Comment.findById(commentId).lean();
     if (!comment) {
@@ -343,13 +318,6 @@ export const toggleLikeComment = async (req, res) => {
 
     // Apply like status
     const commentWithLikeStatus = addCommentLikeStatus([updatedComment], userId)[0];
-
-    console.log('Comment like toggled:', {
-      commentId: commentId.slice(-4),
-      wasLiked: hasLiked,
-      nowLiked: commentWithLikeStatus.isLiked,
-      likesCount: commentWithLikeStatus.likesCount
-    });
 
     const responseData = {
       isLiked: commentWithLikeStatus.isLiked,

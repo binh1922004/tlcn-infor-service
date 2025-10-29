@@ -334,3 +334,346 @@ export const incrementViews = async (req, res) => {
     return response.sendError(res, "Failed to increment view");
   }
 };
+
+/**
+ * Get all posts with admin privileges (can see unpublished posts)
+ */
+export const getAdminPostsList = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const limit = Math.min(50, parseInt(req.query.limit || "10", 10));
+    const skip = (page - 1) * limit;
+    
+    const filter = {};
+    
+    // Filter by status
+    if (req.query.status) {
+      if (req.query.status === 'published') {
+        filter.isPublished = true;
+      } else if (req.query.status === 'draft') {
+        filter.isPublished = false;
+      }
+    }
+    
+    // Filter by author
+    if (req.query.author) {
+      filter.author = req.query.author;
+    }
+    
+    // Search by title or content
+    if (req.query.search) {
+      filter.$or = [
+        { title: { $regex: req.query.search, $options: 'i' } },
+        { content: { $regex: req.query.search, $options: 'i' } }
+      ];
+    }
+    
+    // Sort
+    const sortBy = req.query.sortBy || 'createdAt';
+    const order = req.query.order === 'asc' ? 1 : -1;
+    const sortOptions = { [sortBy]: order };
+
+    const posts = await Post.find(filter)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limit)
+      .populate("author", "userName fullName avatar email")
+      .select('-htmlContent') // Exclude large HTML content for list view
+      .lean()
+      .exec();
+
+    const total = await Post.countDocuments(filter);
+
+    return response.sendSuccess(res, {
+      posts,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("getAdminPostsList error", err);
+    return response.sendError(res, "Failed to get admin posts list");
+  }
+};
+
+/**
+ * Get post detail with admin privileges
+ */
+export const getAdminPostDetail = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    
+    const post = await Post.findById(postId)
+      .populate("author", "userName fullName avatar email")
+      .populate({
+        path: "comments",
+        populate: {
+          path: "user",
+          select: "userName fullName avatar"
+        }
+      })
+      .exec();
+
+    if (!post) {
+      return response.sendError(res, "Post not found", 404);
+    }
+
+    return response.sendSuccess(res, post);
+  } catch (err) {
+    console.error("getAdminPostDetail error", err);
+    return response.sendError(res, "Failed to get post detail");
+  }
+};
+
+/**
+ * Delete post (Admin - can delete any post)
+ */
+export const deleteAdminPost = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    
+    const post = await Post.findByIdAndDelete(postId).exec();
+    
+    if (!post) {
+      return response.sendError(res, "Post not found", 404);
+    }
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('post:deleted', { postId: post._id });
+    }
+
+    return response.sendSuccess(res, null, "Post deleted successfully");
+  } catch (err) {
+    console.error("deleteAdminPost error", err);
+    return response.sendError(res, "Failed to delete post");
+  }
+};
+
+/**
+ * Update post status (Admin)
+ */
+export const updateAdminPostStatus = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { status } = req.body;
+
+    if (!status || !['published', 'draft'].includes(status)) {
+      return response.sendError(res, "Invalid status. Use 'published' or 'draft'", 400);
+    }
+
+    const isPublished = status === 'published';
+
+    const post = await Post.findByIdAndUpdate(
+      postId,
+      { $set: { isPublished } },
+      { new: true }
+    )
+      .populate("author", "userName fullName avatar")
+      .exec();
+
+    if (!post) {
+      return response.sendError(res, "Post not found", 404);
+    }
+
+    // Emit socket event
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("post:statusUpdated", {
+        postId: post._id,
+        status,
+        isPublished,
+        updatedAt: post.updatedAt,
+      });
+    }
+
+    return response.sendSuccess(
+      res,
+      post,
+      `Post ${status === 'published' ? 'published' : 'set to draft'} successfully`
+    );
+  } catch (err) {
+    console.error("updateAdminPostStatus error", err);
+    return response.sendError(res, "Failed to update post status");
+  }
+};
+
+/**
+ * Get post statistics (Admin)
+ */
+export const getAdminPostStats = async (req, res) => {
+  try {
+    const [
+      totalPosts,
+      publishedPosts,
+      draftPosts,
+      totalViews,
+      totalLikes,
+      totalComments,
+      totalShares,
+      recentPosts,
+      popularPosts
+    ] = await Promise.all([
+      Post.countDocuments(),
+      Post.countDocuments({ isPublished: true }),
+      Post.countDocuments({ isPublished: false }),
+      Post.aggregate([
+        { $group: { _id: null, total: { $sum: "$viewsCount" } } }
+      ]),
+      Post.aggregate([
+        { $group: { _id: null, total: { $sum: "$likesCount" } } }
+      ]),
+      Post.aggregate([
+        { $group: { _id: null, total: { $sum: "$commentsCount" } } }
+      ]),
+      Post.aggregate([
+        { $group: { _id: null, total: { $sum: "$sharesCount" } } }
+      ]),
+      Post.find({ isPublished: true })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('title author createdAt')
+        .populate('author', 'userName')
+        .lean(),
+      Post.find({ isPublished: true })
+        .sort({ likesCount: -1, viewsCount: -1 })
+        .limit(5)
+        .select('title likesCount viewsCount author')
+        .populate('author', 'userName')
+        .lean()
+    ]);
+
+    const stats = {
+      totalPosts,
+      publishedPosts,
+      draftPosts,
+      totalViews: totalViews[0]?.total || 0,
+      totalLikes: totalLikes[0]?.total || 0,
+      totalComments: totalComments[0]?.total || 0,
+      totalShares: totalShares[0]?.total || 0,
+      recentPosts,
+      popularPosts
+    };
+
+    return response.sendSuccess(res, stats);
+  } catch (err) {
+    console.error("getAdminPostStats error", err);
+    return response.sendError(res, "Failed to get post statistics");
+  }
+};
+
+/**
+ * Bulk update posts status (Admin)
+ */
+export const bulkUpdatePostsStatus = async (req, res) => {
+  try {
+    const { postIds, status } = req.body;
+
+    if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+      return response.sendError(res, "Post IDs array is required", 400);
+    }
+
+    if (!status || !['published', 'draft'].includes(status)) {
+      return response.sendError(res, "Invalid status. Use 'published' or 'draft'", 400);
+    }
+
+    const isPublished = status === 'published';
+
+    const result = await Post.updateMany(
+      { _id: { $in: postIds } },
+      { $set: { isPublished } }
+    ).exec();
+
+    // Emit socket event
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("posts:bulkStatusUpdated", {
+        postIds,
+        status,
+        count: result.nModified
+      });
+    }
+
+    return response.sendSuccess(
+      res,
+      { updated: result.nModified },
+      `${result.nModified} posts ${status === 'published' ? 'published' : 'set to draft'} successfully`
+    );
+  } catch (err) {
+    console.error("bulkUpdatePostsStatus error", err);
+    return response.sendError(res, "Failed to bulk update posts status");
+  }
+};
+
+/**
+ * Bulk delete posts (Admin)
+ */
+export const bulkDeletePosts = async (req, res) => {
+  try {
+    const { postIds } = req.body;
+
+    if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+      return response.sendError(res, "Post IDs array is required", 400);
+    }
+
+    const result = await Post.deleteMany({ _id: { $in: postIds } }).exec();
+
+    // Emit socket event
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("posts:bulkDeleted", {
+        postIds,
+        count: result.deletedCount
+      });
+    }
+
+    return response.sendSuccess(
+      res,
+      { deleted: result.deletedCount },
+      `${result.deletedCount} posts deleted successfully`
+    );
+  } catch (err) {
+    console.error("bulkDeletePosts error", err);
+    return response.sendError(res, "Failed to bulk delete posts");
+  }
+};
+
+/**
+ * Pin/Unpin post (Admin)
+ */
+export const togglePinPost = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    
+    const post = await Post.findById(postId).exec();
+    
+    if (!post) {
+      return response.sendError(res, "Post not found", 404);
+    }
+
+    post.isPinned = !post.isPinned;
+    await post.save();
+
+    // Emit socket event
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("post:pinToggled", {
+        postId: post._id,
+        isPinned: post.isPinned
+      });
+    }
+
+    return response.sendSuccess(
+      res,
+      { isPinned: post.isPinned },
+      `Post ${post.isPinned ? 'pinned' : 'unpinned'} successfully`
+    );
+  } catch (err) {
+    console.error("togglePinPost error", err);
+    return response.sendError(res, "Failed to toggle pin post");
+  }
+};

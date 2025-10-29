@@ -17,6 +17,7 @@ const startServer = async () => {
   });
   setupSocket();
   await setupKafkaConsumers();
+  //await setupKafkaConsumers();
 };
 await migrateProblems()
 startServer();

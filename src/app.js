@@ -20,7 +20,7 @@ app.use(
       "http://127.0.0.1:5174", // Alternative localhost
     ],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
       "Content-Type",
       "Authorization",
