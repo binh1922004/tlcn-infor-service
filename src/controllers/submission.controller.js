@@ -2,14 +2,11 @@ import response from "../helpers/response.js";
 import SubmissionModel from "../models/submission.model.js";
 import {pageDTO} from "../helpers/dto.helpers.js";
 import {sendMessage} from "../service/kafka.service.js";
-import {sendMessageToUser} from "../socket/socket.js";
-import {updateSubmissionStatus} from "../service/sumission.service.js";
 
 export const submitProblem = async (req, res) => {
     try{
         const id = req.user._id;
-        let body = req.body;
-        body.source = body.source.trim();
+        const body = req.body;
         body.problem = req.params.id;
         body.user = id;
         let submission = await await SubmissionModel.create(body);
@@ -44,7 +41,6 @@ export const getSubmissionsByUserId = async (req, res) => {
             .limit(limit)
 
         const total = await SubmissionModel.countDocuments(filter);
-        // sendMessageToUser(userId, 'submission-update', submissions)
         return response.sendSuccess(res, pageDTO(submissions, total, page, limit));
     }
     catch (error) {
@@ -84,17 +80,6 @@ export const getSubmission = async (req, res) => {
         return response.sendSuccess(res, pageDTO(submissions, total, page, limit));
     }
     catch (error) {
-        console.log(error);
-        return response.sendError(res, error);
-    }
-}
-
-export const getSubmissionById = async (req, res) => {
-    try {
-        const id = req.params.id;
-        const submission = await SubmissionModel.findById(id);
-        return response.sendSuccess(res, submission);
-    } catch (error) {
         console.log(error);
         return response.sendError(res, error);
     }

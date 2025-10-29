@@ -3,7 +3,6 @@ import {uploadFile} from "../service/s3.service.js";
 import problemModels from "../models/problem.models.js";
 import {CustomZipProcessor} from "../method/zip.method.js";
 import {pageDTO} from "../helpers/dto.helpers.js";
-import {getLatestSubmissionByUser} from "../service/sumission.service.js";
 
 const IMAGE_PROBLEM_DIR = (problemId, imgKey) => `problems/${problemId}/images/${imgKey}`;
 const TESTCASE_PROBLEM_DIR = (problemId, testcaseKey) => `problems/${problemId}/testcase/${testcaseKey}`;
@@ -101,17 +100,8 @@ export const getProblems = async (req, res) => {
 export const getProblemByShortId = async (req, res) => {
     try{
         const id = req.params.id;
-        let problem = await problemModels.findOne({shortId: id}, {numberOfTestcases: 0});
-
-        let lastSubmission = null;
-        if (req.user) {
-            const userId = req.user._id;
-            lastSubmission = await getLatestSubmissionByUser(userId, problem._id);
-        }
-        return response.sendSuccess(res, {
-            ...problem._doc, // hoặc ...problem._doc nếu dùng Mongoose
-            lastSubmission
-        });
+        const problem = await problemModels.findOne({shortId: id}, {numberOfTestcases: 0});
+        return response.sendSuccess(res, problem);
     }
     catch (error) {
         console.log(error);
