@@ -7,6 +7,7 @@ import uploadPostRoutes from './routes/uploadPost.routes.js';
 import commentRoutes from './routes/comment.routes.js';
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import submissionRoute from "./routes/submission.route.js";
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -14,7 +15,9 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173", // Frontend Vite
-      "http://127.0.0.1:5173", // Alternative localhost
+      "http://127.0.0.1:5173",
+        "http://localhost:5174", // Frontend Vite
+      "http://127.0.0.1:5174", // Alternative localhost
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -32,6 +35,7 @@ app.use(cookieParser())
 app.use('/api/users', userRoutes)
 app.use('/api/auth', authRoutes)
 app.use('/api/problems', problemRoutes)
+app.use('/api/submissions', submissionRoute)
 
 app.use('/api/posts', postRoutes)
 app.use('/api/upload/posts', uploadPostRoutes);

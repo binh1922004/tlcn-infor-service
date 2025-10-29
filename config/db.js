@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { config } from "./env.js";
 const connectDB = async () => {
     try{
+        console.log(config.mongodbUri)
         await mongoose.connect(config.mongodbUri, {
             useNewUrlParser: true,
             useUnifiedTopology: true,

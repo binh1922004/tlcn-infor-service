@@ -1,7 +1,9 @@
 import response from "../helpers/response.js";
-import {uploadFile} from "../method/s3.method.js";
+import {uploadFile} from "../service/s3.service.js";
 import problemModels from "../models/problem.models.js";
 import {CustomZipProcessor} from "../method/zip.method.js";
+import {pageDTO} from "../helpers/dto.helpers.js";
+import {getLatestSubmissionByUser} from "../service/sumission.service.js";
 
 const IMAGE_PROBLEM_DIR = (problemId, imgKey) => `problems/${problemId}/images/${imgKey}`;
 const TESTCASE_PROBLEM_DIR = (problemId, testcaseKey) => `problems/${problemId}/testcase/${testcaseKey}`;
@@ -60,8 +62,56 @@ export const createProblem = async (req, res) => {
 export const getProblemById = async (req, res) => {
     try{
         const id = req.params.id;
-        const problem = await problemModels.findById(id);
+        const problem = await problemModels.findById(id,  {numberOfTestcases: 0});
         return response.sendSuccess(res, problem);
+    }
+    catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}
+
+export const getProblems = async (req, res) => {
+    try{
+        const {name, tag, difficulty, page, size} = req.query;
+        let filter = {};
+        if (name) {
+            filter.name = { $regex: name, $options: 'i' }; // Case-insensitive regex search
+        }
+        if (tag) {
+            filter.tags = tag; // Exact match for tags
+        }
+        if (difficulty) {
+            filter.difficulty = difficulty; // Exact match for difficulty
+        }
+        const pageNumber = parseInt(page) || 1;
+        const pageSize = parseInt(size) || 20;
+        const skip = (pageNumber - 1) * pageSize;
+        const problems = await problemModels.find(filter, {numberOfTestcases: 0}).sort({createdAt: -1}).skip(skip).limit(pageSize);
+        const total = await problemModels.countDocuments(filter);
+        return response.sendSuccess(res, pageDTO(problems, total, pageNumber, pageSize));
+    }
+    catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}
+
+
+export const getProblemByShortId = async (req, res) => {
+    try{
+        const id = req.params.id;
+        let problem = await problemModels.findOne({shortId: id}, {numberOfTestcases: 0});
+
+        let lastSubmission = null;
+        if (req.user) {
+            const userId = req.user._id;
+            lastSubmission = await getLatestSubmissionByUser(userId, problem._id);
+        }
+        return response.sendSuccess(res, {
+            ...problem._doc, // hoặc ...problem._doc nếu dùng Mongoose
+            lastSubmission
+        });
     }
     catch (error) {
         console.log(error);
