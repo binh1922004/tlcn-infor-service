@@ -87,14 +87,14 @@ const KafkaProducerSingleton = (function () {
         };
     }
 
-    return {
-        getInstance: function () {
-            if (!instance) {
-                instance = init();
+        return {
+            getInstance: function () {
+                if (!instance) {
+                    instance = init();
+                }
+                return instance;
             }
-            return instance;
-        }
-    };
+        };
 })();
 
 export const sendMessage = async (topic, message) => {
@@ -106,17 +106,22 @@ export const sendMessage = async (topic, message) => {
 
 // Cách sử dụng:
 export const setupKafkaConsumers = async () => {
-    const kafka = KafkaProducerSingleton.getInstance();
+    try{
+        const kafka = KafkaProducerSingleton.getInstance();
 
-    // Register for 'user-events' topic
-    kafka.registerHandler('result-topic', async ({ topic, partition, message, key }) => {
-        console.log(`Processing user event: ${message.value.toString()}`);
-        const data = JSON.parse(message.value.toString());
-        await updateSubmissionStatus(data.submissionId, data);
-        const time = new Date().toISOString()
-        console.log(`[${time}] update submission status:`, data.submissionId);
-    });
+        // Register for 'user-events' topic
+        kafka.registerHandler('result-topic', async ({ topic, partition, message, key }) => {
+            console.log(`Processing user event: ${message.value.toString()}`);
+            const data = JSON.parse(message.value.toString());
+            await updateSubmissionStatus(data.submissionId, data);
+            const time = new Date().toISOString()
+            console.log(`[${time}] update submission status:`, data.submissionId);
+        });
 
-    // Subscribe tất cả topics
-    await kafka.subscribe(['result-topic']);
+        // Subscribe tất cả topics
+        await kafka.subscribe(['result-topic']);
+    }
+    catch (err){
+        console.error(err);
+    }
 };
