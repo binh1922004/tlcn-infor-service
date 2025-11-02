@@ -1,5 +1,6 @@
 import { Kafka } from "kafkajs";
 import {updateSubmissionStatus} from "./sumission.service.js";
+import {config} from "../../config/env.js";
 
 const KafkaProducerSingleton = (function () {
     let instance;
@@ -8,7 +9,7 @@ const KafkaProducerSingleton = (function () {
         console.log("Initializing Kafka");
         const client = new Kafka({
             clientId: 'bnoj-app',
-            brokers: ['localhost:9092']
+            brokers: [config.kafka_brokers]
         })
         const producer = client.producer();
         const consumer = client.consumer({ groupId: 'bnoj-group-2' });
