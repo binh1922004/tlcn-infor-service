@@ -26,4 +26,5 @@ export const config = {
     bucket_region: process.env.BUCKET_REGION,
     kafka_brokers: process.env.KAFKA_BROKER,
     kafka_submission_topic: process.env.KAFKA_SUBMISSION_TOPIC,
+    redis_host: process.env.REDIS_HOST,
 }
