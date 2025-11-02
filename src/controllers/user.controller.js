@@ -21,7 +21,8 @@ export const getUsers = async (req, res, next) => {
 
 export const getUserByUsername = async (req, res, next) => {
   try {
-    const username = req.params.userName;
+    const username = req.params.username;
+    console.log(username);
     const user = await userModel.findByUsername(username);
     if (!user) {
       return response.sendError(res, "User is not existed", 404);
@@ -35,7 +36,7 @@ export const getUserByUsername = async (req, res, next) => {
       avatar: user.avatar,
       active: user.active,
       role: user.role,
-      isOwner: req.userName != null && user.userName === req.userName,
+      isOwner: req.user?.userName != null && user.userName === req.user?.userName,
       dob: user.dob,
     });
   } catch (err) {

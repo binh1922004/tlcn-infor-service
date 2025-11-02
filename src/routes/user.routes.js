@@ -1,13 +1,13 @@
 import express from 'express'
 import * as userController from '../controllers/user.controller.js'
-import {authenticateToken, verifyAdmin, verifyAdminOrOwner } from '../middlewares/auth.middleware.js'
+import {authenticateToken, optionalAuth, verifyAdmin, verifyAdminOrOwner} from '../middlewares/auth.middleware.js'
 import { uploadAvatar, getUserAvatar, deleteAvatar, getCurrentUserAvatar } from '../controllers/uploadAvatar.controller.js'
 import upload from '../middlewares/upload.middlewares.js'
 import userStatsRoutes from './userStats.routes.js';
 const router = express.Router()
 
 router.get('/', authenticateToken, userController.getUsers)
-router.get('/profile/:username', userController.getUserByUsername)
+router.get('/profile/:username', optionalAuth, userController.getUserByUsername)
 router.put('/profile/update', authenticateToken, userController.updateUser)
 // Routes upload avatar với Cloudinary
 router.post('/profile/avatar/upload', authenticateToken, upload.single('avatar'), uploadAvatar)
