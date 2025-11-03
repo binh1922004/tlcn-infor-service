@@ -221,12 +221,12 @@ export const googleCallback = async (req, res, next) => {
 	const user = await userModel.findOne({ email: payload.email });
 	if (user) {
 		if (!user.active) {
-			return res.redirect(config.fe_localhost_url + '/onboarding');
+			return res.redirect(config.fe_url + '/onboarding');
 		}
 		const {accessToken, refreshToken} = authMethod.generateToken(user)
 		actionRefreshCookie(res, refreshToken);
 		actionAccessToken(res, accessToken);
-		return res.redirect(config.fe_localhost_url + '/profile')
+		return res.redirect(config.fe_url + '/profile')
 	}
 	else{
 		actionEmailCookie(res, payload.email);
@@ -238,7 +238,7 @@ export const googleCallback = async (req, res, next) => {
 			isGoogle: true
 		}
 		await userModel.create(user)
-		return res.redirect(config.fe_localhost_url + '/onboarding');
+		return res.redirect(config.fe_url + '/onboarding');
 	}
 }
 
