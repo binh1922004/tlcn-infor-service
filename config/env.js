@@ -27,4 +27,5 @@ export const config = {
     kafka_brokers: process.env.KAFKA_BROKER,
     kafka_submission_topic: process.env.KAFKA_SUBMISSION_TOPIC,
     redis_host: process.env.REDIS_HOST,
+    callback_url: process.env.CALLBACK_URL
 }
