@@ -8,6 +8,8 @@ import commentRoutes from './routes/comment.routes.js';
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import submissionRoute from "./routes/submission.route.js";
+import {config} from "../config/env.js";
+console.log(config.fe_url)
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
