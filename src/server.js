@@ -4,7 +4,6 @@ import connectDB from "../config/db.js";
 import addShortId from "./migration/addShortId.js";
 import {setupKafkaConsumers} from "./service/kafka.service.js";
 import {setupSocket} from "./socket/socket.js";
-
 const migrateProblems = async () => {
   await addShortId();
 }
