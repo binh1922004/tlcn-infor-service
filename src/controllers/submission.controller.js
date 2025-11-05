@@ -2,8 +2,7 @@ import response from "../helpers/response.js";
 import SubmissionModel from "../models/submission.model.js";
 import {pageDTO} from "../helpers/dto.helpers.js";
 import {sendMessage} from "../service/kafka.service.js";
-import {sendMessageToUser} from "../socket/socket.js";
-import {updateSubmissionStatus} from "../service/sumission.service.js";
+import mongoose from "mongoose";
 
 export const submitProblem = async (req, res) => {
     try{
@@ -95,6 +94,170 @@ export const getSubmissionById = async (req, res) => {
         const submission = await SubmissionModel.findById(id);
         return response.sendSuccess(res, submission);
     } catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}
+
+
+export const getUserSubmissionCalendar = async (req, res) => {
+    try {
+        const { year } = req.query;
+        let startDate, endDate;
+        if (!year) {
+            const today = new Date();
+            const lastYear = new Date();
+            lastYear.setDate(lastYear.getDate() - 365);
+            startDate = lastYear;
+            endDate = today;
+        }
+        else{
+            const firstDayOfYear = new Date(year, 0, 1);
+            const lastDayOfYear = new Date(year, 11, 31, 23, 59, 59, 999);
+            startDate = firstDayOfYear;
+            endDate = lastDayOfYear;
+        }
+
+        const submissions = await SubmissionModel.aggregate([
+            {
+                $match: {
+                    user: new mongoose.Types.ObjectId(req.params.id),
+                    createdAt: {$gte: startDate, $lte: endDate}
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: "$createdAt",
+                            timezone: "Asia/Ho_Chi_Minh"
+                        }
+                    },
+                    count: { $sum: 1  }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    date: "$_id",
+                    count: 1
+                }
+            }
+        ]);
+
+        const submissionMap = new Map(submissions.map(s => [s.date, s.count]));
+
+        const allDates = [];
+        let current = new Date(startDate);
+
+        while (current <= endDate) {
+            const dateStr = current.toISOString().split('T')[0]; // YYYY-MM-DD
+            allDates.push({
+                date: dateStr,
+                count: submissionMap.get(dateStr) || 0 // nếu không có thì count = 0
+            });
+            current.setDate(current.getDate() + 1);
+        }
+        return response.sendSuccess(res, allDates);
+    }
+    catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}
+
+export const getSubmissionStatusChartByUser = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        if (!userId) {
+            return response.sendError(res, "User ID is required", 400);
+        }
+
+        const statusCounts = await SubmissionModel.aggregate([
+            {
+                $match: {
+                    user: new mongoose.Types.ObjectId(userId),
+                    status: { $nin: ["Pending", null]},
+                }
+            },
+            {
+                $group: {
+                    _id: "$status",
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    status: "$_id",
+                    count: 1
+                }
+            }
+        ]);
+        let cnt = 0;
+        for (const status of statusCounts) {
+            cnt += status.count;
+        }
+
+        return response.sendSuccess(res, {chart: statusCounts, total: cnt});
+    }
+    catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}
+
+export const getSubmissionDifficultyChart = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        if (!userId) {
+            return response.sendError(res, "User ID is required", 400);
+        }
+
+        const statusCounts = await SubmissionModel.aggregate([
+            {
+                $match: {
+                    user: new mongoose.Types.ObjectId(userId),
+                    status: { $eq: "Accepted"},
+                }
+            },
+            {
+                // JOIN với collection Problem để lấy thông tin difficulty
+                $lookup: {
+                    from: "problems", // tên collection (thường là lowercase + 's')
+                    localField: "problem",
+                    foreignField: "_id",
+                    as: "problemDetails"
+                }
+            },
+            {
+                // Unwind array từ $lookup
+                $unwind: "$problemDetails"
+            },
+            {
+                // Group theo difficulty
+                $group: {
+                    _id: "$problemDetails.difficulty",
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    difficulty: "$_id",
+                    count: 1
+                }
+            }
+        ]);
+        let cnt = 0;
+        for (const status of statusCounts) {
+            cnt += status.count;
+        }
+
+        return response.sendSuccess(res, {chart: statusCounts, total: cnt});
+    }
+    catch (error) {
         console.log(error);
         return response.sendError(res, error);
     }

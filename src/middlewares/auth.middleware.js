@@ -33,6 +33,7 @@ export const optionalAuth = (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, config.accessTokenKey);   
     req.user = decoded;
+    console.log(decoded)
     next();
   } catch (error) {
     req.user = null;
