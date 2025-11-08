@@ -6,18 +6,16 @@ export const createComment = async (req, res) => {
   try {
     const { content, postId, parentCommentId } = req.body;
     const userId = req.user._id;
-    const MAX_NESTING_LEVEL = 2; // Giới hạn độ sâu tối đa là 2
+    const MAX_NESTING_LEVEL = 2;
     
     const post = await Post.findById(postId);
     if (!post) {
       return response.sendError(res, "Post Not Found", 404);
     }
     
-    // Biến để lưu ID của comment cha thực tế sẽ sử dụng
     let actualParentCommentId = parentCommentId;
     
     if (parentCommentId) {
-      // Tìm comment cha được chỉ định
       const parentComment = await Comment.findById(parentCommentId);
       if (!parentComment || parentComment.post.toString() !== postId) {
         return response.sendError(
@@ -27,18 +25,11 @@ export const createComment = async (req, res) => {
         );
       }
       
-      // Kiểm tra độ sâu của comment cha
       if (parentComment.parentComment) {
-        // Đã là comment cấp 2 (hoặc sâu hơn)
-        // Tìm comment gốc của comment cấp 2 này
         const grandparentComment = await Comment.findById(parentComment.parentComment);
         if (grandparentComment && grandparentComment.parentComment === null) {
-          // Nếu grandparent là cấp 1 (có parentComment = null), sử dụng chính ID của comment cấp 2 làm parentCommentId
-          // Để comment mới vẫn hiển thị ở cấp 2
           actualParentCommentId = parentCommentId;
         } else {
-          // Trong trường hợp đã qua cấp 2, sử dụng ID của comment cấp 2 làm parentCommentId
-          // để đảm bảo comment mới vẫn ở cấp 2
           actualParentCommentId = grandparentComment ? grandparentComment._id : parentComment.parentComment;
         }
       }
@@ -51,7 +42,6 @@ export const createComment = async (req, res) => {
       parentComment: actualParentCommentId || null,
     });
 
-    // Sử dụng instance method để add reply
     if (actualParentCommentId) {
       const parentComment = await Comment.findById(actualParentCommentId);
       if (parentComment) {
@@ -72,6 +62,44 @@ export const createComment = async (req, res) => {
   }
 };
 
+// UPDATED: Helper function với total replies count đệ quy
+const populateRepliesWithPagination = async (comments, userId, repliesLimit = 3) => {
+  if (!Array.isArray(comments) || comments.length === 0) return [];
+  
+  const processedComments = await Promise.all(
+    comments.map(async (comment) => {
+      // Get total replies count recursively (including nested)
+      const totalReplies = await Comment.countTotalRepliesRecursive(comment._id);
+      
+      // Get limited direct children only
+      const directReplies = await Comment.find({
+        parentComment: comment._id
+      })
+        .populate("author", "userName fullName avatar")
+        .sort({ createdAt: 1 })
+        .limit(repliesLimit)
+        .lean();
+      
+      // Recursively populate nested replies
+      const repliesWithNestedPagination = await populateRepliesWithPagination(
+        directReplies, 
+        userId, 
+        repliesLimit
+      );
+      
+      return {
+        ...comment,
+        replies: repliesWithNestedPagination,
+        totalReplies, // Total count including all nested replies
+        hasMoreReplies: totalReplies > directReplies.length,
+        loadedRepliesCount: directReplies.length
+      };
+    })
+  );
+  
+  return processedComments;
+};
+
 export const getPostComments = async (req, res) => {
   try {
     const { postId } = req.params;
@@ -79,14 +107,13 @@ export const getPostComments = async (req, res) => {
       page = 1, 
       limit = 10, 
       sortBy = 'oldest',
-      includeLikedBy = 'false' // Optional parameter
+      repliesLimit = 3, 
+      includeLikedBy = 'false'
     } = req.query;
     
     const userId = req.user?._id || null;
     const isGuest = !userId;
     const shouldIncludeLikedBy = includeLikedBy === 'true';
-    
-
     
     const post = await Post.findById(postId);
     if (!post) {
@@ -95,7 +122,6 @@ export const getPostComments = async (req, res) => {
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Sort options
     let sortOptions = {};
     switch (sortBy.toLowerCase()) {
       case 'oldest':
@@ -110,41 +136,28 @@ export const getPostComments = async (req, res) => {
         break;
     }
 
-
-    // Enhanced query để include likes data
     const comments = await Comment.find({
       post: postId,
       parentComment: null,
     })
       .populate("author", "userName fullName avatar")
-      .populate({
-        path: "replies",
-        populate: [
-          {
-            path: "author",
-            select: "userName fullName avatar",
-          },
-          {
-            path: "replies",
-            populate: {
-              path: "author",
-              select: "userName fullName avatar",
-            }
-          }
-        ],
-        options: { sort: { createdAt: 1 } },
-      })
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit))
-      .lean(); // Use lean for better performance
+      .lean();
 
+    // Populate replies with recursive total count
+    const commentsWithPaginatedReplies = await populateRepliesWithPagination(
+      comments,
+      userId,
+      parseInt(repliesLimit)
+    );
 
-    // Apply like status using helper function
-    const commentsWithLikeStatus = addCommentLikeStatus(comments, userId);
+    const commentsWithLikeStatus = addCommentLikeStatus(
+      commentsWithPaginatedReplies, 
+      userId
+    );
 
-
-    // Get stats
     const stats = await Comment.getPostCommentStats(postId);
 
     const pagination = {
@@ -166,10 +179,10 @@ export const getPostComments = async (req, res) => {
         sortBy: sortBy.toLowerCase(),
         appliedSort: sortOptions,
         sortedCount: commentsWithLikeStatus.length,
-        includeLikedBy: shouldIncludeLikedBy
+        includeLikedBy: shouldIncludeLikedBy,
+        repliesLimit: parseInt(repliesLimit) 
       }
     };
-    
     
     return response.sendSuccess(
       res,
@@ -181,12 +194,11 @@ export const getPostComments = async (req, res) => {
     return response.sendError(res, "Internal server error", 500, error.message);
   }
 };
-// Helper function để add like status cho comments (giống như posts)
+
 const addCommentLikeStatus = (comments, userId) => {
   if (!Array.isArray(comments)) return [];
   
   return comments.map(comment => {
-    // Extract userId array từ likes
     const likedUserIds = comment.likes?.map(like => 
       (like.user?._id || like.user)?.toString()
     ).filter(Boolean) || [];
@@ -195,11 +207,10 @@ const addCommentLikeStatus = (comments, userId) => {
       ...comment,
       isLiked: userId ? likedUserIds.includes(userId.toString()) : false,
       likesCount: comment.likesCount || 0,
-      likedByUserIds: likedUserIds, // Danh sách userId đã like
-      likes: undefined // Remove raw likes array
+      likedByUserIds: likedUserIds,
+      likes: undefined
     };
     
-    // Process replies recursively
     if (processedComment.replies && processedComment.replies.length > 0) {
       processedComment.replies = addCommentLikeStatus(processedComment.replies, userId);
     }
@@ -219,8 +230,7 @@ export const updateComment = async (req, res) => {
       return response.sendError(res, "Comment not found", 404);
     }
 
-    // Check if user is the author
-    if (comment.author.toString() !== userId) {
+    if (comment.author.toString() !== userId.toString()) {
       return response.sendError(
         res,
         "You can only edit your own comments",
@@ -229,7 +239,7 @@ export const updateComment = async (req, res) => {
     }
 
     comment.content = content;
-    //    Pre-save middleware sẽ tự động set isEdited và editedAt
+    comment.isEdited = true;
     await comment.save();
 
     await comment.populate("author", "userName fullName avatar");
@@ -251,8 +261,7 @@ export const deleteComment = async (req, res) => {
       return response.sendError(res, "Comment not found", 404);
     }
 
-    // Check if user is the author
-    if (comment.author.toString() !== userId) {
+    if (comment.author.toString() !== userId.toString()) {
       return response.sendError(
         res,
         "You can only delete your own comments",
@@ -260,8 +269,9 @@ export const deleteComment = async (req, res) => {
       );
     }
 
-    //Pre-remove middleware sẽ tự động cleanup references và replies
+    // Pre-remove middleware will handle recursive deletion of nested replies
     await Comment.findByIdAndDelete(commentId);
+    
     return response.sendSuccess(res, null, "Comment deleted successfully");
   } catch (error) {
     console.error("Error deleting comment:", error);
@@ -279,7 +289,6 @@ export const toggleLikeComment = async (req, res) => {
       return response.sendError(res, "Comment not found", 404);
     }
 
-    // Check current like status
     const likedUserIds = comment.likes?.map(like => 
       (like.user?._id || like.user)?.toString()
     ).filter(Boolean) || [];
@@ -290,7 +299,6 @@ export const toggleLikeComment = async (req, res) => {
     let message;
 
     if (hasLiked) {
-      // Unlike
       await Comment.updateOne(
         { _id: commentId },
         { 
@@ -300,7 +308,6 @@ export const toggleLikeComment = async (req, res) => {
       );
       message = "Comment unliked";
     } else {
-      // Like
       await Comment.updateOne(
         { _id: commentId },
         { 
@@ -311,12 +318,10 @@ export const toggleLikeComment = async (req, res) => {
       message = "Comment liked";
     }
 
-    // Get updated comment
     updatedComment = await Comment.findById(commentId)
       .populate("author", "userName fullName avatar")
       .lean();
 
-    // Apply like status
     const commentWithLikeStatus = addCommentLikeStatus([updatedComment], userId)[0];
 
     const responseData = {
@@ -326,13 +331,83 @@ export const toggleLikeComment = async (req, res) => {
       comment: commentWithLikeStatus
     };
 
+    return response.sendSuccess(res, responseData, message);
+  } catch (error) {
+    console.error("Error toggling comment like:", error);
+    return response.sendError(res, "Internal server error", 500, error.message);
+  }
+};
+
+// UPDATED: Load more replies with recursive total count
+export const loadMoreReplies = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { 
+      skip = 0, 
+      limit = 5,
+      includeNested = 'true'
+    } = req.query;
+    
+    const userId = req.user?._id || null;
+    const shouldIncludeNested = includeNested === 'true';
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      return response.sendError(res, "Comment not found", 404);
+    }
+
+    // Get total recursive count
+    const totalReplies = await Comment.countTotalRepliesRecursive(commentId);
+
+    // Get direct replies with pagination
+    const replies = await Comment.find({
+      parentComment: commentId,
+    })
+      .populate("author", "userName fullName avatar")
+      .sort({ createdAt: 1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .lean();
+
+    let processedReplies;
+    if (shouldIncludeNested) {
+      processedReplies = await populateRepliesWithPagination(replies, userId, 3);
+    } else {
+      processedReplies = replies.map(reply => ({
+        ...reply,
+        replies: [],
+        totalReplies: 0,
+        hasMoreReplies: false,
+        loadedRepliesCount: 0
+      }));
+    }
+
+    const repliesWithLikeStatus = addCommentLikeStatus(processedReplies, userId);
+
+    const responseData = {
+      replies: repliesWithLikeStatus,
+      pagination: {
+        currentSkip: parseInt(skip),
+        currentLimit: parseInt(limit),
+        totalReplies, // Recursive total count
+        loadedCount: repliesWithLikeStatus.length,
+        hasMore: (parseInt(skip) + repliesWithLikeStatus.length) < totalReplies,
+        nextSkip: parseInt(skip) + parseInt(limit)
+      },
+      meta: {
+        userId: userId ? userId.toString() : null,
+        isGuest: !userId,
+        includeNested: shouldIncludeNested
+      }
+    };
+
     return response.sendSuccess(
       res,
       responseData,
-      message
+      "More replies loaded successfully"
     );
   } catch (error) {
-    console.error("Error toggling comment like:", error);
+    console.error("Error loading more replies:", error);
     return response.sendError(res, "Internal server error", 500, error.message);
   }
 };
@@ -341,7 +416,7 @@ export const getCommentReplies = async (req, res) => {
   try {
     const { commentId } = req.params;
     const { page = 1, limit = 5 } = req.query;
-    const userId = req.user?._id || null; // Add userId
+    const userId = req.user?._id || null;
 
     const comment = await Comment.findById(commentId);
     if (!comment) {
@@ -357,17 +432,17 @@ export const getCommentReplies = async (req, res) => {
       .sort({ createdAt: 1 })
       .skip(skip)
       .limit(parseInt(limit))
-      .lean(); // Add lean for performance
+      .lean();
 
-    // Apply like status to replies
     const repliesWithLikeStatus = addCommentLikeStatus(replies, userId);
 
-    const totalReplies = await Comment.getCommentRepliesCount(commentId);
+    // Get recursive total count
+    const totalReplies = await Comment.countTotalRepliesRecursive(commentId);
 
     const pagination = {
       currentPage: parseInt(page),
       totalPages: Math.ceil(totalReplies / parseInt(limit)),
-      totalReplies,
+      totalReplies, // Recursive total count
       hasNext: page < Math.ceil(totalReplies / parseInt(limit)),
       hasPrev: page > 1,
     };
@@ -395,25 +470,20 @@ export const getCommentReplies = async (req, res) => {
 export const getCommentById = async (req, res) => {
   try {
     const { commentId } = req.params;
-    const userId = req.user?._id || null; // Add userId
+    const userId = req.user?._id || null;
 
     const comment = await Comment.findById(commentId)
       .populate("author", "userName fullName avatar")
-      .populate({
-        path: "replies",
-        populate: {
-          path: "author",
-          select: "userName fullName avatar",
-        },
-        options: { sort: { createdAt: 1 } },
-      })
-      .lean(); // Add lean for performance
+      .lean();
 
     if (!comment) {
       return response.sendError(res, "Comment not found", 404);
     }
 
-    // Apply like status to comment and its replies
+    // Add total replies count
+    const totalReplies = await Comment.countTotalRepliesRecursive(commentId);
+    comment.totalReplies = totalReplies;
+
     const commentWithLikeStatus = addCommentLikeStatus([comment], userId)[0];
 
     return response.sendSuccess(res, commentWithLikeStatus, "Comment retrieved successfully");
@@ -422,108 +492,3 @@ export const getCommentById = async (req, res) => {
     return response.sendError(res, "Internal server error", 500, error.message);
   }
 };
-
-// // Thêm endpoint mới để lấy comment stats riêng
-// export const getPostCommentStats = async (req, res) => {
-//   try {
-//     const { postId } = req.params;
-    
-//     const post = await Post.findById(postId);
-//     if (!post) {
-//       return response.sendError(res, "Post Not Found", 404);
-//     }
-
-//     //  Sử dụng static method từ model
-//     const stats = await Comment.getPostCommentStats(postId);
-    
-//     return response.sendSuccess(
-//       res,
-//       stats,
-//       "Comment stats retrieved successfully"
-//     );
-//   } catch (error) {
-//     console.error("Error getting comment stats:", error);
-//     return response.sendError(res, "Internal server error", 500, error.message);
-//   }
-// };
-
-// // Thêm endpoint để lấy stats của nhiều posts
-// export const getMultiplePostsCommentStats = async (req, res) => {
-//   try {
-//     const { postIds } = req.body; // Array of post IDs
-    
-//     if (!Array.isArray(postIds) || postIds.length === 0) {
-//       return response.sendError(res, "postIds array is required", 400);
-//     }
-
-//     //  Sử dụng static method từ model
-//     const statsMap = await Comment.getMultiplePostsCommentStats(postIds);
-    
-//     return response.sendSuccess(
-//       res,
-//       statsMap,
-//       "Multiple posts comment stats retrieved successfully"
-//     );
-//   } catch (error) {
-//     console.error("Error getting multiple posts comment stats:", error);
-//     return response.sendError(res, "Internal server error", 500, error.message);
-//   }
-// };
-
-// //  Thêm endpoint để check user đã like comments nào
-// export const checkUserLikedComments = async (req, res) => {
-//   try {
-//     const { commentIds } = req.body; // Array of comment IDs
-//     const userId = req.user._id;
-    
-//     if (!Array.isArray(commentIds) || commentIds.length === 0) {
-//       return response.sendError(res, "commentIds array is required", 400);
-//     }
-
-//     //  Sử dụng static method từ model
-//     const likedCommentIds = await Comment.checkUserLikedComments(commentIds, userId);
-    
-//     return response.sendSuccess(
-//       res,
-//       { likedCommentIds },
-//       "User liked comments retrieved successfully"
-//     );
-//   } catch (error) {
-//     console.error("Error checking user liked comments:", error);
-//     return response.sendError(res, "Internal server error", 500, error.message);
-//   }
-// };
-
-// //  Thêm endpoint để get comment với reply count
-// export const getCommentWithStats = async (req, res) => {
-//   try {
-//     const { commentId } = req.params;
-//     const userId = req.user?._id;
-
-//     const comment = await Comment.findById(commentId)
-//       .populate("author", "userName fullName avatar");
-
-//     if (!comment) {
-//       return response.sendError(res, "Comment not found", 404);
-//     }
-
-//     //  Sử dụng instance methods để get thêm thông tin
-//     const repliesCount = await comment.getRepliesCount();
-//     const isLiked = userId ? comment.isLikedByUser(userId) : false;
-
-//     const responseData = {
-//       ...comment.toJSON(),
-//       repliesCount,
-//       isLiked
-//     };
-
-//     return response.sendSuccess(
-//       res,
-//       responseData,
-//       "Comment with stats retrieved successfully"
-//     );
-//   } catch (error) {
-//     console.error("Error getting comment with stats:", error);
-//     return response.sendError(res, "Internal server error", 500, error.message);
-//   }
-// };
