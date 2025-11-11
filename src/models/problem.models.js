@@ -20,6 +20,7 @@ const problemSchema = new mongoose.Schema({
     numberOfSubmissions: {type: Number, default: 0},
     numberOfAccepted: {type: Number, default: 0},
     difficulty: {type: String, default: "Easy"},
+    zipName: {type: String, default: null},
     shortId: { type: String, default: () => nanoid() }
 }, {
     timestamps: true //auto generate createAt and updateAt
