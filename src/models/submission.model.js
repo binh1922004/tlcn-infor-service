@@ -15,6 +15,7 @@ const problemSchema = new mongoose.Schema({
     passed: {type: Number, default: 0},
     total: {type: Number, default: 0},
     shortId: { type: String, default: () => nanoid() },
+    contest: {type: mongoose.Schema.Types.ObjectId, ref: 'Contest', default: null},
 }, {
     timestamps: true //auto generate createAt and updateAt
 })

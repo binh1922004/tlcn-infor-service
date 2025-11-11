@@ -9,7 +9,8 @@ const contestSchema = new mongoose.Schema({
     problems: [{
         problemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Problem', required: true },
         order: { type: Number, default: 0 }
-    }]
+    }],
+    participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 }, {
     timestamps: true //auto generate createAt and updateAt
 })

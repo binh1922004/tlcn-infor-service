@@ -15,8 +15,7 @@ const startServer = async () => {
     console.log(`Server running on port ${config.port}`);
   });
   setupSocket();
-  await setupKafkaConsumers();
-  //await setupKafkaConsumers();
+  // await setupKafkaConsumers();
 };
 await migrateProblems()
 startServer();
