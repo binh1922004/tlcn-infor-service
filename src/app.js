@@ -8,6 +8,7 @@ import commentRoutes from './routes/comment.routes.js';
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import submissionRoute from "./routes/submission.route.js";
+import classroom from "./routes/classroom.routes.js"
 import {config} from "../config/env.js";
 import adminContestRoutes from "./routes/admin.contest.routes.js";
 import contestRoutes from "./routes/contest.routes.js";
@@ -20,8 +21,10 @@ app.use(
     origin: [
       "http://localhost:5173", // Frontend Vite
       "http://127.0.0.1:5173",
-        "http://localhost:5174", // Frontend Vite
+      "http://localhost:5174", // Frontend Vite
       "http://127.0.0.1:5174", // Alternative localhost
+      "http://localhost:5175",
+      "http://127.0.0.1:5175"
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -46,4 +49,5 @@ app.use('/api/upload/posts', uploadPostRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/contests', contestRoutes);
 app.use('/api/admin/contests', adminContestRoutes);
+app.use('/api/classroom', classroom);
 export default app;

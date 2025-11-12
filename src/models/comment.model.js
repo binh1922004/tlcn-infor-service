@@ -269,11 +269,7 @@ commentSchema.methods.getRepliesCount = async function() {
 // Instance method để check user đã like comment này chưa
 commentSchema.methods.isLikedByUser = function(userId) {
   if (!this.likes || this.likes.length === 0 || !userId) {
-    console.log('🔍 isLikedByUser - No likes or user:', { 
-      hasLikes: !!this.likes, 
-      likesLength: this.likes?.length, 
-      hasUser: !!userId 
-    });
+
     return false;
   }
   
@@ -288,17 +284,9 @@ commentSchema.methods.isLikedByUser = function(userId) {
     
     const match = likeUserId && likeUserId.toString() === userId.toString();
     
-    console.log('🔍 Checking like:', { 
-      like, 
-      likeUserId, 
-      userId: userId.toString(), 
-      match 
-    });
-    
     return match;
   });
   
-  console.log('🔍 isLikedByUser result:', result);
   return result;
 };
 

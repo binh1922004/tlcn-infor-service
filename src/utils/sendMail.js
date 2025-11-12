@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { config } from "../../config/env.js";
+
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
@@ -22,14 +23,22 @@ transporter.verify(function(error, success) {
   }
 });
 
-const sendMail = async (to, subject, text) => {
+const sendMail = async (to, subject, text, html) => {
   try {
-    const result = await transporter.sendMail({
-      from: 'ttnghia204@gmail.com',
+    const mailOptions = {
+      from: config.email,
       to,
       subject,
-      text,
-    });
+    };
+
+    // Nếu có html thì dùng html, không thì dùng text
+    if (html) {
+      mailOptions.html = html;
+    } else {
+      mailOptions.text = text;
+    }
+
+    const result = await transporter.sendMail(mailOptions);
     console.log("Email sent successfully:", result.messageId);
     return result;
   } catch (error) {
