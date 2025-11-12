@@ -19,3 +19,19 @@ export const pageDTO = (data, total, page, limit) => {
         last: page>=total/limit-1
     }
 }
+
+export const mapToContestDto = (contest) => {
+    return {
+        _id: contest._id,
+        title: contest.title,
+        description: contest.description,
+        startTime: contest.startTime,
+        endTime: contest.endTime,
+        isPrivate: contest.isPrivate,
+        isActive: contest.isActive,
+        problems: contest.problems,
+        createdAt: contest.createdAt,
+        updatedAt: contest.updatedAt,
+        shortId: contest.shortId,
+    }
+}

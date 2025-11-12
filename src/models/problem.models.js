@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { customAlphabet } from 'nanoid';
-const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
+import {randomString} from "../helpers/random.js";
 
 const problemSchema = new mongoose.Schema({
     name: {type: String},
@@ -21,7 +21,8 @@ const problemSchema = new mongoose.Schema({
     numberOfAccepted: {type: Number, default: 0},
     difficulty: {type: String, default: "Easy"},
     zipName: {type: String, default: null},
-    shortId: { type: String, default: () => nanoid() }
+    shortId: { type: String, default: () => randomString() },
+    classRoom: {type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null},
 }, {
     timestamps: true //auto generate createAt and updateAt
 })
