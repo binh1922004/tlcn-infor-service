@@ -9,6 +9,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import submissionRoute from "./routes/submission.route.js";
 import {config} from "../config/env.js";
+import adminContestRoutes from "./routes/admin.contest.routes.js";
+import contestRoutes from "./routes/contest.routes.js";
 console.log(config.fe_url)
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -42,4 +44,6 @@ app.use('/api/submissions', submissionRoute)
 app.use('/api/posts', postRoutes)
 app.use('/api/upload/posts', uploadPostRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/contests', contestRoutes);
+app.use('/api/admin/contests', adminContestRoutes);
 export default app;

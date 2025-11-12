@@ -17,7 +17,8 @@ const problemSchema = new mongoose.Schema({
     shortId: { type: String, default: () => nanoid() },
     contest: {type: mongoose.Schema.Types.ObjectId, ref: 'Contest', default: null},
 }, {
-    timestamps: true //auto generate createAt and updateAt
+    timestamps: true, //auto generate createAt and updateAt
+    strict: true
 })
 
 problemSchema.post('save', function (collection) {
