@@ -12,6 +12,7 @@ import classroom from "./routes/classroom.routes.js"
 import {config} from "../config/env.js";
 import adminContestRoutes from "./routes/admin.contest.routes.js";
 import contestRoutes from "./routes/contest.routes.js";
+import materialRoutes from './routes/material.routes.js';
 console.log(config.fe_url)
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -50,4 +51,5 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/contests', contestRoutes);
 app.use('/api/admin/contests', adminContestRoutes);
 app.use('/api/classroom', classroom);
+app.use('/api/classroom', materialRoutes); 
 export default app;

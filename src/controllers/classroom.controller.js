@@ -555,7 +555,7 @@ export const inviteStudentsByEmail = async (req, res) => {
         });
 
       } catch (error) {
-        console.error(`❌ Error sending email to ${email}:`, error);
+        console.error(`Error sending email to ${email}:`, error);
         inviteResults.push({
           email,
           status: 'failed',

@@ -22,9 +22,16 @@ const problemSchema = new mongoose.Schema({
     difficulty: {type: String, default: "Easy"},
     zipName: {type: String, default: null},
     shortId: { type: String, default: () => randomString() },
-    classRoom: {type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null},
+    classRoom: {type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null, index: true},
+    createBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref:"User",
+        default:null,
+        index: true
+    }
 }, {
     timestamps: true //auto generate createAt and updateAt
 })
+problemSchema.index({ classRoom: 1, isActive: 1 });
 
 export default mongoose.model('Problem', problemSchema);

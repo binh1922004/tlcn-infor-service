@@ -25,11 +25,11 @@ const materialSchema = new mongoose.Schema({
     required: true
   },
   fileSize: {
-    type: Number, // in bytes
+    type: Number,
     required: true
   },
   fileType: {
-    type: String, // pdf, docx, pptx, etc.
+    type: String,
     required: true
   },
   uploadedBy: {
@@ -67,15 +67,29 @@ const materialSchema = new mongoose.Schema({
     default: 'active',
     index: true
   },
-  // Cloud storage info
-  cloudinaryPublicId: String,
-  cloudinaryResourceType: String,
-  // Metadata
+  // ===== Cloudinary Storage Info =====
+  cloudinaryPublicId: {
+    type: String,
+    required: true
+  },
+  cloudinaryResourceType: {
+    type: String,
+    default: 'auto'
+  },
+  cloudinaryFolder: String,
+  cloudinaryUrl: String,
+  cloudinarySecureUrl: String,
+  // ===== Metadata =====
   metadata: {
     originalName: String,
     mimeType: String,
     extension: String,
-    uploadedAt: Date
+    uploadedAt: Date,
+    width: Number, // For images
+    height: Number, // For images
+    duration: Number, // For videos/audio
+    format: String,
+    pages: Number // For PDFs
   }
 }, {
   timestamps: true
@@ -86,6 +100,7 @@ materialSchema.index({ classroom: 1, status: 1, createdAt: -1 });
 materialSchema.index({ classroom: 1, category: 1, status: 1 });
 materialSchema.index({ uploadedBy: 1, createdAt: -1 });
 materialSchema.index({ tags: 1 });
+materialSchema.index({ cloudinaryPublicId: 1 });
 
 // Text search index
 materialSchema.index({ 
@@ -104,33 +119,47 @@ materialSchema.virtual('fileSizeFormatted').get(function() {
   return Math.round(this.fileSize / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 });
 
+materialSchema.virtual('isImage').get(function() {
+  return this.fileType?.startsWith('image/');
+});
+
+materialSchema.virtual('isVideo').get(function() {
+  return this.fileType?.startsWith('video/');
+});
+
+materialSchema.virtual('isDocument').get(function() {
+  const docTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.ms-excel'
+  ];
+  return docTypes.some(type => this.fileType?.includes(type));
+});
+
 // ===== Methods =====
 
-// Increment download count
 materialSchema.methods.incrementDownload = function() {
   this.downloads += 1;
   return this.save();
 };
 
-// Increment view count
 materialSchema.methods.incrementView = function() {
   this.views += 1;
   return this.save();
 };
 
-// Soft delete
 materialSchema.methods.softDelete = function() {
   this.status = 'deleted';
   return this.save();
 };
 
-// Archive
 materialSchema.methods.archive = function() {
   this.status = 'archived';
   return this.save();
 };
 
-// Restore
 materialSchema.methods.restore = function() {
   this.status = 'active';
   return this.save();
@@ -138,7 +167,6 @@ materialSchema.methods.restore = function() {
 
 // ===== Statics =====
 
-// Find by classroom
 materialSchema.statics.findByClassroom = function(classroomId, options = {}) {
   const query = { 
     classroom: classroomId,
@@ -158,7 +186,6 @@ materialSchema.statics.findByClassroom = function(classroomId, options = {}) {
     .sort(options.sort || { createdAt: -1 });
 };
 
-// Search materials
 materialSchema.statics.searchMaterials = function(classroomId, searchTerm, options = {}) {
   const query = {
     classroom: classroomId,
@@ -175,7 +202,6 @@ materialSchema.statics.searchMaterials = function(classroomId, searchTerm, optio
     .sort({ score: { $meta: 'textScore' } });
 };
 
-// Get statistics
 materialSchema.statics.getStats = async function(classroomId) {
   const stats = await this.aggregate([
     { 
@@ -190,13 +216,7 @@ materialSchema.statics.getStats = async function(classroomId) {
         totalMaterials: { $sum: 1 },
         totalDownloads: { $sum: '$downloads' },
         totalViews: { $sum: '$views' },
-        totalSize: { $sum: '$fileSize' },
-        byCategory: {
-          $push: {
-            category: '$category',
-            count: 1
-          }
-        }
+        totalSize: { $sum: '$fileSize' }
       }
     }
   ]);
@@ -211,7 +231,8 @@ materialSchema.statics.getStats = async function(classroomId) {
     {
       $group: {
         _id: '$category',
-        count: { $sum: 1 }
+        count: { $sum: 1 },
+        totalSize: { $sum: '$fileSize' }
       }
     }
   ]);
@@ -227,7 +248,6 @@ materialSchema.statics.getStats = async function(classroomId) {
   };
 };
 
-// Get recent materials
 materialSchema.statics.getRecent = function(classroomId, limit = 5) {
   return this.find({
     classroom: classroomId,
@@ -238,7 +258,6 @@ materialSchema.statics.getRecent = function(classroomId, limit = 5) {
     .limit(limit);
 };
 
-// Get popular materials (by downloads)
 materialSchema.statics.getPopular = function(classroomId, limit = 5) {
   return this.find({
     classroom: classroomId,
@@ -249,10 +268,9 @@ materialSchema.statics.getPopular = function(classroomId, limit = 5) {
     .limit(limit);
 };
 
+// ===== Hooks =====
 
-// Pre-save hook
 materialSchema.pre('save', function(next) {
-  // Extract metadata if not set
   if (!this.metadata.originalName) {
     this.metadata.originalName = this.fileName;
     this.metadata.mimeType = this.fileType;
@@ -260,12 +278,6 @@ materialSchema.pre('save', function(next) {
     this.metadata.uploadedAt = new Date();
   }
   next();
-});
-
-// Post-remove hook (cleanup)
-materialSchema.post('remove', async function(doc) {
-  console.log('🗑️ Material removed, cleanup needed:', doc._id);
-  // You can trigger Cloudinary deletion here if needed
 });
 
 export default mongoose.model('Material', materialSchema);

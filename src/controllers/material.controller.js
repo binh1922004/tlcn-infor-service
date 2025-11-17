@@ -1,7 +1,7 @@
 import materialModel from '../models/material.model.js';
 import classroomModel from '../models/classroom.model.js';
 import response from '../helpers/response.js';
-import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary.js';
+import { uploadToCloudinary, deleteFromCloudinary } from '../service/cloudinary.service.js';
 
 /**
  * Get all materials in classroom
@@ -10,39 +10,90 @@ import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary.js
 export const getMaterials = async (req, res) => {
   try {
     const classroom = req.classroom;
-    const { category, search, sort = 'recent' } = req.query;
+    const { 
+      category, 
+      search, 
+      sort = 'recent',
+      page = 1,
+      limit = 9 // ✅ 9 items per page
+    } = req.query;
 
     console.log('📚 Getting materials:', {
       classroomId: classroom._id,
       classCode: classroom.classCode,
       category,
-      search
+      search,
+      page,
+      limit
     });
 
-    let materials;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
-    if (search) {
-      // Text search
-      materials = await materialModel.searchMaterials(classroom._id, search, { category });
-    } else {
-      // Regular query
-      const sortOptions = {
-        recent: { createdAt: -1 },
-        oldest: { createdAt: 1 },
-        popular: { downloads: -1 },
-        views: { views: -1 },
-        name: { title: 1 }
-      };
+    let query = {
+      classroom: classroom._id,
+      status: 'active'
+    };
 
-      materials = await materialModel.findByClassroom(classroom._id, {
-        category,
-        sort: sortOptions[sort] || sortOptions.recent
-      });
+    // Filter by category
+    if (category && category !== 'all') {
+      query.category = category;
     }
+
+    // Search filter
+    if (search && search.trim()) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { fileName: { $regex: search, $options: 'i' } },
+        { tags: { $in: [new RegExp(search, 'i')] } }
+      ];
+    }
+
+    // Sort options
+    const sortOptions = {
+      recent: { createdAt: -1 },
+      oldest: { createdAt: 1 },
+      popular: { downloads: -1 },
+      views: { views: -1 },
+      name: { title: 1 }
+    };
+
+    const selectedSort = sortOptions[sort] || sortOptions.recent;
+
+    // ✅ Get total count for pagination
+    const total = await materialModel.countDocuments(query);
+
+    // ✅ Get paginated materials
+    const materials = await materialModel
+      .find(query)
+      .populate('uploadedBy', 'userName fullName avatar email')
+      .sort(selectedSort)
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // ✅ Calculate pagination info
+    const totalPages = Math.ceil(total / limitNum);
+
+    console.log('✅ Materials fetched:', {
+      total,
+      page: pageNum,
+      totalPages,
+      count: materials.length
+    });
 
     return response.sendSuccess(res, {
       materials,
-      total: materials.length,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1
+      },
       classCode: classroom.classCode
     });
   } catch (error) {
@@ -72,7 +123,6 @@ export const getMaterial = async (req, res) => {
       return response.sendError(res, 'Không tìm thấy tài liệu', 404);
     }
 
-    // Increment view count
     await material.incrementView();
 
     return response.sendSuccess(res, { material });
@@ -96,6 +146,9 @@ export const uploadMaterial = async (req, res) => {
       classroomId: classroom._id,
       classCode: classroom.classCode,
       title,
+      fileName: req.file?.originalname,
+      fileType: req.file?.mimetype,
+      fileSize: req.file?.size,
       userId
     });
 
@@ -107,19 +160,58 @@ export const uploadMaterial = async (req, res) => {
       return response.sendError(res, 'Tiêu đề là bắt buộc', 400);
     }
 
-    // Upload file to Cloudinary
+    // Validate file type
+    const allowedMimeTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+      'text/csv',
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/x-rar-compressed',
+      'application/x-7z-compressed',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'video/mp4',
+      'video/quicktime',
+      'video/x-msvideo'
+    ];
+
+    if (!allowedMimeTypes.includes(req.file.mimetype)) {
+      return response.sendError(res, `Loại file không được hỗ trợ: ${req.file.mimetype}`, 400);
+    }
+
+    // Validate file size (50MB max)
+    const maxSize = 50 * 1024 * 1024;
+    if (req.file.size > maxSize) {
+      return response.sendError(res, 'Kích thước file tối đa là 50MB', 400);
+    }
+
+    // ✅ Upload file to Cloudinary (extension will be preserved by service)
     const uploadResult = await uploadToCloudinary(req.file.buffer, {
       folder: `classrooms/${classroom.classCode}/materials`,
-      resource_type: 'auto',
-      public_id: `${Date.now()}_${req.file.originalname.replace(/\s+/g, '_')}`
+      mimetype: req.file.mimetype,
+      filename: req.file.originalname
+      // ❌ DON'T pass public_id here - let service generate it with extension
     });
 
     console.log('☁️ Cloudinary upload result:', {
       url: uploadResult.secure_url,
-      publicId: uploadResult.public_id
+      publicId: uploadResult.public_id,
+      resourceType: uploadResult.resource_type,
+      format: uploadResult.format,
+      bytes: uploadResult.bytes
     });
 
-    // Create material document
+    // ✅ Create material document
     const material = await materialModel.create({
       classroom: classroom._id,
       title,
@@ -134,11 +226,16 @@ export const uploadMaterial = async (req, res) => {
       tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim())) : [],
       cloudinaryPublicId: uploadResult.public_id,
       cloudinaryResourceType: uploadResult.resource_type,
+      cloudinaryFolder: uploadResult.folder,
+      cloudinaryUrl: uploadResult.url,
+      cloudinarySecureUrl: uploadResult.secure_url,
       metadata: {
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
-        extension: req.file.originalname.split('.').pop(),
-        uploadedAt: new Date()
+        extension: uploadResult.format || req.file.originalname.split('.').pop(),
+        uploadedAt: new Date(),
+        format: uploadResult.format,
+        bytes: uploadResult.bytes
       }
     });
 
@@ -149,7 +246,16 @@ export const uploadMaterial = async (req, res) => {
     return response.sendSuccess(res, { material }, 'Tải tài liệu thành công');
   } catch (error) {
     console.error('❌ Error uploading material:', error);
-    return response.sendError(res, error.message || 'Internal server error', 500);
+    
+    let errorMessage = 'Lỗi khi tải tài liệu lên';
+    if (error.message) {
+      errorMessage = error.message;
+    }
+    if (error.http_code === 400) {
+      errorMessage = 'Không thể upload file. Vui lòng thử lại.';
+    }
+    
+    return response.sendError(res, errorMessage, error.http_code || 500);
   }
 };
 
@@ -175,7 +281,7 @@ export const updateMaterial = async (req, res) => {
       return response.sendError(res, 'Không tìm thấy tài liệu', 404);
     }
 
-    // Check ownership (only uploader, classroom owner, or teachers can update)
+    // Check ownership
     const isOwner = classroom.owner.toString() === req.user._id.toString();
     const isTeacher = classroom.teachers.some(t => t.toString() === req.user._id.toString());
     const isUploader = material.uploadedBy.toString() === req.user._id.toString();
@@ -278,7 +384,6 @@ export const downloadMaterial = async (req, res) => {
       return response.sendError(res, 'Không tìm thấy tài liệu', 404);
     }
 
-    // Increment download count
     await material.incrementDownload();
 
     console.log('⬇️ Material downloaded:', material.title);
