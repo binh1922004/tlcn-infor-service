@@ -110,10 +110,12 @@ export const getProblems = async (req, res) => {
             filter.difficulty = difficulty; // Exact match for difficulty
         }
         filter.isActive = true;
-        filter.classRoom = null;
+        filter.isPrivate = false;
         const pageNumber = parseInt(page) || 1;
         const pageSize = parseInt(size) || 20;
         const skip = (pageNumber - 1) * pageSize;
+        console.log(filter);
+        console.log(skip, ' ', pageSize);
         const problems = await problemModels.find(filter, {numberOfTestcases: 0}).sort({createdAt: -1}).skip(skip).limit(pageSize);
         const total = await problemModels.countDocuments(filter);
         return response.sendSuccess(res, pageDTO(problems, total, pageNumber, pageSize));
@@ -198,7 +200,10 @@ export const getAllProblem = async (req, res) => {
         let {name, tag, difficulty, page, size, sortBy, order} = req.query;
         let filter = {};
         if (name) {
-            filter.name = { $regex: name, $options: 'i' }; // Case-insensitive regex search
+            filter.$or = [
+                { name: { $regex: name, $options: 'i' } },
+                { shortId: { $regex: name, $options: 'i' } }
+            ];
         }
         if (tag) {
             filter.tags = tag; // Exact match for tags

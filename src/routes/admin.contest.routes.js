@@ -11,7 +11,7 @@ import {
 const router = express.Router()
 
 router.post('/', authenticateToken, verifyAdmin, create);
-router.post('/:contestId/problem/:problemId', authenticateToken, verifyAdmin, addProblemsToContest);
+router.post('/:contestId/problems', authenticateToken, verifyAdmin, addProblemsToContest);
 router.get('/', authenticateToken, verifyAdmin, getAll);
 router.put("/:id", authenticateToken, verifyAdmin, updateContest);
 router.delete("/:id", authenticateToken, verifyAdmin, deleteContest);
