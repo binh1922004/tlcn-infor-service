@@ -33,5 +33,7 @@ export const mapToContestDto = (contest) => {
         createdAt: contest.createdAt,
         updatedAt: contest.updatedAt,
         shortId: contest.shortId,
+        code: contest.code,
+        isRegistered: contest.isRegistered,
     }
 }
