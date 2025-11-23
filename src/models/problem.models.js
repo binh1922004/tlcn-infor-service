@@ -30,7 +30,8 @@ const problemSchema = new mongoose.Schema({
         index: true
     }
 }, {
-    timestamps: true //auto generate createAt and updateAt
+    timestamps: true, //auto generate createAt and updateAtm
+    strict: true
 })
 problemSchema.index({ classRoom: 1, isActive: 1 });
 

@@ -21,7 +21,7 @@ export const upload = multer({
 export const uploadZip = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 50 * 1024 * 1024, // 10MB cho file ZIP
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/zip' ||
