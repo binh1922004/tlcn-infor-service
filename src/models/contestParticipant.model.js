@@ -8,10 +8,29 @@ const contestParticipantSchema = new mongoose.Schema({
     mode: { type: String, enum: ['virtual', 'official'], default: null},
     startTime: { type: Date, default: null },
     endTime: { type: Date, default: null },
-    score: { type: Number, default: 0 },
+    score: { type: Number, default: 0 }, // total score in the contest
+    problemScores: [{
+        problemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Problem', required: true },
+        bestScore: { type: Number, default: 0 }, // Highest score achieved for this problem
+        bestSubmissionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Submission' }, // Submission ID of the best submission
+        attempts: { type: Number, default: 0 },
+        lastSubmittedAt: { type: Date },
+    }],
+    lastBestSubmissionScoreAt: { type: Date }
 }, {
     timestamps: true,//auto generate createAt and updateAt
     strict: true
 })
+
+contestParticipantSchema.pre('save', function(next) {
+    if (this.problemScores) {
+        let totalScore = 0;
+        for (let ps of this.problemScores) {
+            totalScore += ps.bestScore;
+        }
+        this.score = totalScore;
+    }
+    next();
+});
 
 export default mongoose.model('ContestParticipant', contestParticipantSchema);

@@ -4,8 +4,9 @@ import problemModels from "../models/problem.models.js";
 import {mapToContestDto, pageDTO} from "../helpers/dto.helpers.js";
 import bcrypt from "bcrypt";
 import contestParticipantModel from "../models/contestParticipant.model.js";
-import {contestIsRunning, getUserParticipantStatus} from "../service/contest.service.js";
+import {contestIsRunning, getRankingForContest, getUserParticipantStatus} from "../service/contest.service.js";
 import mongoose from "mongoose";
+import {sendMessageToContestRoom} from "../socket/socket.js";
 
 const SALT_ROUNDS = 10
 
@@ -310,6 +311,41 @@ export const registerToContest = async (req, res, next) => {
         }
         await contestParticipantModel.create(contestParticipant);
         return response.sendSuccess(res, 'Registered to contest successfully');
+    }
+    catch (error) {
+        console.log(error)
+        return response.sendError(res, error);
+    }
+}
+
+export const getContestRanking = async (req, res, next) => {
+    try {
+        const contestId = req.params.id;
+        const {page, size, mode} = req.query;
+        const pageNumber = parseInt(page) || 1;
+        const pageSize = parseInt(size) || 20;
+        const skip = (pageNumber - 1) * pageSize;
+        const data = await getRankingForContest(contestId, mode, {skip: skip, limit: pageSize});
+        return response.sendSuccess(res, data);
+    }
+    catch (error) {
+        console.log(error)
+        return response.sendError(res, error);
+    }
+}
+
+export const createContestNotification = async (req, res, next) => {
+    try {
+        const contestId = req.params.id;
+        const {message} = req.body;
+        const contest = await contestModel.findById(contestId);
+        if (!contest) {
+            return response.sendError(res, 'Contest not found', 404);
+        }
+
+        const notification = createContestNotification(contestId, message);
+        sendMessageToContestRoom(contestId, 'contest-notification', notification);
+        return response.sendSuccess(res, notification);
     }
     catch (error) {
         console.log(error)

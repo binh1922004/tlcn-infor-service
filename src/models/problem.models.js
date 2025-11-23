@@ -24,7 +24,8 @@ const problemSchema = new mongoose.Schema({
     shortId: { type: String, default: () => randomString() },
     classRoom: {type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null},
 }, {
-    timestamps: true //auto generate createAt and updateAt
+    timestamps: true, //auto generate createAt and updateAtm
+    strict: true
 })
 
 export default mongoose.model('Problem', problemSchema);

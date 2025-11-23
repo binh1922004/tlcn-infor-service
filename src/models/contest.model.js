@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import {randomString} from "../helpers/random.js";
+import moment from "moment-timezone";
 
 const contestSchema = new mongoose.Schema({
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -18,10 +19,19 @@ const contestSchema = new mongoose.Schema({
     password: { type: String, default: null },
     isActive: { type: Boolean, default: false },
     classRoom: { type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null},
-    shortId: { type: String, default: () => randomString() }
+    shortId: { type: String, default: () => randomString() },
 }, {
     timestamps: true,//auto generate createAt and updateAt
-    strict: true
+    strict: true,
+    toJSON: {
+        transform: function(doc, ret) {
+            ret.createdAt = moment(ret.createdAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD HH:mm:ss');
+            ret.updatedAt = moment(ret.updatedAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD HH:mm:ss');
+            ret.startTime = moment(ret.startTime).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD HH:mm:ss');
+            ret.endTime = moment(ret.endTime).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD HH:mm:ss');
+            return ret;
+        }
+    }
 })
 
 contestSchema.post('save', async function(doc, next) {

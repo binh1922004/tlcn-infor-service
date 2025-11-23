@@ -172,10 +172,10 @@ export const getAllProblem = async (req, res) => {
             ];
         }
         if (tag) {
-            filter.tags = tag; // Exact match for tags
+            filter.tags = tag;
         }
         if (difficulty) {
-            filter.difficulty = difficulty; // Exact match for difficulty
+            filter.difficulty = difficulty;
         }
 
         if (!sortBy) {
@@ -192,7 +192,14 @@ export const getAllProblem = async (req, res) => {
         const pageNumber = parseInt(page) || 1;
         const pageSize = parseInt(size) || 20;
         const skip = (pageNumber - 1) * pageSize;
-        const problems = await problemModels.find(filter, {numberOfTestcases: 0}).sort({[sortBy]: order}).skip(skip).limit(pageSize);
+
+        // adding _id to sort
+        const sortOptions = {[sortBy]: order, _id: order};
+
+        const problems = await problemModels.find(filter, {numberOfTestcases: 0})
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(pageSize);
         const total = await problemModels.countDocuments(filter);
         return response.sendSuccess(res, pageDTO(problems, total, pageNumber, pageSize));
     }
