@@ -16,6 +16,27 @@ const problemSchema = new mongoose.Schema({
     total: {type: Number, default: 0},
     shortId: { type: String, default: () => nanoid() },
     contest: {type: mongoose.Schema.Types.ObjectId, ref: 'Contest', default: null},
+    type: {
+        type: String,
+        enum: ['regular', 'contest'],
+        required: true,
+        default: 'regular'
+    },
+    contestType: {
+        type: String,
+        enum: ['official', 'virtual'],
+        required: function() {
+            return this.type === 'contest';
+        }
+    },
+    contestParticipant: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'ContestParticipant',
+        required: function() {
+            return this.contestType === 'virtual';
+        }
+    },
+    score: {type: Number, default: 0}, // For future use in contests with score-based evaluation
 }, {
     timestamps: true, //auto generate createAt and updateAt
     strict: true

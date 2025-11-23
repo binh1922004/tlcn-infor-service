@@ -2,6 +2,7 @@ import {Server} from "socket.io";
 import jwt from "jsonwebtoken";
 import {config} from "../../config/env.js";
 import response from "../helpers/response.js";
+import {isRegisteredForContest} from "../service/contest.service.js";
 
 const SocketSingleton = (function () {
     let instance;
@@ -28,7 +29,9 @@ const SocketSingleton = (function () {
                 next()
             })
         });
+
         let onlineUsers = new Map();
+
         io.on("connection", (socket) => {
             console.log("✅ A user connected:", socket.id);
             socket.on("disconnect", () => {
@@ -52,6 +55,26 @@ const SocketSingleton = (function () {
                     onlineUsers: onlineUsers.size
                 });
             });
+
+            socket.on('join-contest', ({contestId}) => {
+                try{
+                    const userId = socket.userId;
+                    const isRegistered = isRegisteredForContest(userId, contestId);
+                    if (!isRegistered) {
+                        console.log(`User ${userId} is not registered for contest ${contestId}`);
+                        socket.emit('error', { message: 'Not registered for this contest' });
+                    }
+                    else{
+                        socket.join(`contest-${contestId}`);
+                        console.log(`User ${userId} joined contest room: contest-${contestId}`);
+                        socket.emit('contest-joined', { contestId });
+                    }
+                }
+                catch (error){
+                    console.error('Error joining contest room:', error);
+                    socket.emit('error', { message: 'Error joining contest room' });
+                }
+            })
         });
 
         return {
@@ -61,6 +84,10 @@ const SocketSingleton = (function () {
                     console.log(`--> Sending event ${event} to user ${userId} on socket ${socketId}`);
                     io.to(socketId).emit(event, data)
                 }
+            },
+            sendMessageToRoom: function (room, event, data) {
+                console.log(`--> Sending event ${event} to room ${room}`);
+                io.to(room).emit(event, data);
             }
         }
     }
@@ -78,6 +105,12 @@ export const sendMessageToUser = (userId, event, data) => {
     console.log(`<UNK> User ${userId} sendMessageToUser ${event}`);
     const socket = SocketSingleton.getInstance();
     socket.sendMessageToSocketId(userId, event, data);
+}
+
+export const sendMessageToContestRoom = (contestId, event, data) => {
+    console.log(`<UNK> Contest ${contestId} sendMessageToContestRoom ${event}`);
+    const socket = SocketSingleton.getInstance();
+    socket.sendMessageToRoom(`contest-${contestId}`, event, data);
 }
 
 export const setupSocket = () => {

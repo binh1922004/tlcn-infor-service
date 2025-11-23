@@ -3,6 +3,8 @@ import SubmissionModel from "../models/submission.model.js";
 import {pageDTO} from "../helpers/dto.helpers.js";
 import {sendMessage} from "../service/kafka.service.js";
 import mongoose from "mongoose";
+import contestParticipantModel from "../models/contestParticipant.model.js";
+import {getLatestContestParticipant} from "../service/contest.service.js";
 
 export const submitProblem = async (req, res) => {
     try{
@@ -11,10 +13,33 @@ export const submitProblem = async (req, res) => {
         body.source = body.source.trim();
         body.problem = req.params.id;
         body.user = id;
-        let submission = await await SubmissionModel.create(body);
+        if (body.contest){
+            const latestParticipation = await getLatestContestParticipant(body.contest, id);
+            console.log(latestParticipation);
+            if (!latestParticipation){
+                return response.sendError(res, "You are not allowed to submit to this contest", 403);
+            }
+            const now = new Date();
+            if (latestParticipation.startTime && now >= latestParticipation.startTime && now <= latestParticipation.endTime){
+                body.type = 'contest';
+                body.contestType = latestParticipation.mode;
+                body.contestParticipant = latestParticipation._id;
+            }
+            else{
+                return response.sendError(res, "You are not allowed to submit to this contest", 403);
+            }
+        }
+        else{
+            body.contest = null;
+        }
+        let submission = await SubmissionModel.create(body);
         submission = await submission.populate('problem', 'numberOfTestCases time memory');
         // body.
         await sendMessage('submission-topic', submission);
+
+        //testing
+        // const submission = await SubmissionModel.findById('68deb1c1043f748a29a7e2ab')
+        //     .populate('problem', 'numberOfTestCases time memory');
         return response.sendSuccess(res, submission);
     }
     catch (error) {
@@ -26,7 +51,7 @@ export const submitProblem = async (req, res) => {
 export const getSubmissionsByUserId = async (req, res) => {
     try{
         const userId = req.params.id;
-        const {limit = 10, page = 1, language, problemId} = req.query;
+        const {limit = 10, page = 1, language, problemId, contestParticipant} = req.query;
         const skip = (page - 1) * limit;
         const filter = {
             user: userId,
@@ -36,6 +61,10 @@ export const getSubmissionsByUserId = async (req, res) => {
         }
         if (language !== 'all' && language){
             filter.language = language
+        }
+        if (contestParticipant){
+            filter.contestParticipant = contestParticipant;
+            console.log(contestParticipant)
         }
         const submissions = await SubmissionModel.find(filter)
             .sort({createdAt: -1})

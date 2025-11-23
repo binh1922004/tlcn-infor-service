@@ -4,7 +4,7 @@ import {
     codeChecking,
     getAllPublicContests,
     getContestByCode,
-    getContestById, registerToContest
+    getContestById, getContestRanking, registerToContest
 } from "../controllers/contest.controller.js";
 const router = express.Router()
 
@@ -13,4 +13,5 @@ router.post('/code/check', codeChecking);
 router.get('/:id', optionalAuth, getContestById)
 router.get('/code/:code', optionalAuth, getContestByCode)
 router.post('/:id/register', authenticateToken, registerToContest);
+router.get('/:id/ranking', getContestRanking)
 export default router
