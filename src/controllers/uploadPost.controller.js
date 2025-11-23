@@ -94,7 +94,6 @@ export const uploadSingleImage = async (req, res) => {
             console.error('❌ Cloudinary upload error:', error);
             reject(error);
           } else {
-            console.log('✅ Cloudinary upload success:', result.secure_url);
             resolve(result);
           }
         }

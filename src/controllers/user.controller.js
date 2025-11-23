@@ -21,7 +21,7 @@ export const getUsers = async (req, res, next) => {
 
 export const getUserByUsername = async (req, res, next) => {
   try {
-    const username = req.params.username;
+    const username = req.params.userName;
     console.log(username);
     const user = await userModel.findByUsername(username);
     if (!user) {

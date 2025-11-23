@@ -59,6 +59,8 @@ commentSchema.index({ author: 1 });
 commentSchema.index({ parentComment: 1 });
 commentSchema.index({ post: 1, parentComment: 1 }); // Composite index for better performance
 
+
+
 // Virtual để check nếu user đã like comment
 commentSchema.virtual('isLiked').get(function() {
   return this.likes && this.likes.length > 0;
@@ -115,6 +117,27 @@ commentSchema.statics.getCommentRepliesCount = async function(commentId) {
     console.error("Error getting replies count:", error);
     return 0;
   }
+};
+commentSchema.statics.countTotalRepliesRecursive = async function(commentId) {
+  // Get direct children
+  const directReplies = await this.find({ 
+    parentComment: new mongoose.Types.ObjectId(commentId) 
+  }).select('_id');
+  
+  if (directReplies.length === 0) return 0;
+  
+  let total = directReplies.length;
+  
+  // Recursively count nested replies
+  for (const reply of directReplies) {
+    const nestedCount = await this.countTotalRepliesRecursive(reply._id);
+    total += nestedCount;
+  }
+  
+  return total;
+};
+commentSchema.methods.getTotalRepliesCount = async function() {
+  return await this.constructor.countTotalRepliesRecursive(this._id);
 };
 
 // Static method để đếm total comments của nhiều posts cùng lúc
@@ -246,11 +269,7 @@ commentSchema.methods.getRepliesCount = async function() {
 // Instance method để check user đã like comment này chưa
 commentSchema.methods.isLikedByUser = function(userId) {
   if (!this.likes || this.likes.length === 0 || !userId) {
-    console.log('🔍 isLikedByUser - No likes or user:', { 
-      hasLikes: !!this.likes, 
-      likesLength: this.likes?.length, 
-      hasUser: !!userId 
-    });
+
     return false;
   }
   
@@ -265,17 +284,9 @@ commentSchema.methods.isLikedByUser = function(userId) {
     
     const match = likeUserId && likeUserId.toString() === userId.toString();
     
-    console.log('🔍 Checking like:', { 
-      like, 
-      likeUserId, 
-      userId: userId.toString(), 
-      match 
-    });
-    
     return match;
   });
   
-  console.log('🔍 isLikedByUser result:', result);
   return result;
 };
 
@@ -361,9 +372,20 @@ commentSchema.post('save', async function(doc) {
 // Pre-remove middleware để cleanup references
 commentSchema.pre('findOneAndDelete', async function(next) {
   try {
-    // Get the document that will be deleted
     const doc = await this.model.findOne(this.getFilter());
     if (!doc) return next();
+
+    // Recursive function to delete all nested replies
+    const deleteRepliesRecursive = async (commentId) => {
+      const replies = await this.model.find({ parentComment: commentId });
+      for (const reply of replies) {
+        await deleteRepliesRecursive(reply._id);
+        await this.model.findByIdAndDelete(reply._id);
+      }
+    };
+
+    // Delete all nested replies first
+    await deleteRepliesRecursive(doc._id);
 
     // Remove this comment from parent's replies array
     if (doc.parentComment) {
@@ -373,14 +395,12 @@ commentSchema.pre('findOneAndDelete', async function(next) {
       }
     }
     
-    // Remove all replies of this comment
-    await this.model.deleteMany({ parentComment: doc._id });
-    
     next();
   } catch (error) {
     next(error);
   }
 });
+
 
 const Comment = mongoose.model('Comment', commentSchema);
 

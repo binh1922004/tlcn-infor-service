@@ -8,7 +8,6 @@ export const authenticateToken = async (req, res, next) => {
 
     if (token == null) {
         token = req.cookies?.access_token;
-        console.log('AccessToken from middleware: ', token);
         if (!token){
             return response.sendError(res, "Unauthenticated", 401)
         }
@@ -33,7 +32,6 @@ export const optionalAuth = (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, config.accessTokenKey);   
     req.user = decoded;
-    console.log(decoded)
     next();
   } catch (error) {
     req.user = null;

@@ -50,6 +50,12 @@ export const uploadProblemTestcases = async (req, res) => {
 export const createProblem = async (req, res) => {
     try{
         const problem = req.body;
+        const userId = req.user?._id;
+        if (problem.classroomId) {
+            problem.classRoom = problem.classroomId;
+            problem.isPrivate = true;
+            problem.createdBy = userId;
+        }
         const createdProblem = await problemModels.create(problem);
         return response.sendSuccess(res, createdProblem);
     }
@@ -125,7 +131,34 @@ export const getProblemByShortId = async (req, res) => {
     try{
         const id = req.params.id;
         let problem = await problemModels.findOne({shortId: id}, {numberOfTestcases: 0});
+        if (!problem) {
+            return response.sendError(res, "Problem not found", 404);
+        }
 
+        // Check if problem is private (classroom-only)
+        if (problem.classRoom) {
+            // If user not logged in, deny access
+            if (!req.user) {
+                return response.sendError(res, "You must be logged in to access this problem", 401);
+            }
+
+            // Check if user has access to this classroom
+            const classroomModel = (await import('../models/classroom.model.js')).default;
+            const classroom = await classroomModel.findById(problem.classRoom);
+            
+            if (!classroom) {
+                return response.sendError(res, "Classroom not found", 404);
+            }
+
+            const userId = req.user._id;
+            const isTeacher = classroom.isTeacher(userId);
+            const isStudent = classroom.isStudent(userId);
+            const isAdmin = req.user.role === 'admin';
+
+            if (!isTeacher && !isStudent && !isAdmin) {
+                return response.sendError(res, "You don't have access to this problem", 403);
+            }
+        }
         let lastSubmission = null;
         if (req.user) {
             const userId = req.user._id;
@@ -144,10 +177,11 @@ export const getProblemByShortId = async (req, res) => {
 
 export const getProblemStats = async (req, res) => {
     try{
-        const totalProblems = await problemModels.countDocuments();
-        const easyProblems = await problemModels.countDocuments({difficulty: 'Easy'});
-        const mediumProblems = await problemModels.countDocuments({difficulty: 'Medium'});
-        const hardProblems = await problemModels.countDocuments({difficulty: 'Hard'});
+        const filter = { classRoom: null }
+         const totalProblems = await problemModels.countDocuments(filter);
+        const easyProblems = await problemModels.countDocuments({...filter, difficulty: 'Easy'});
+        const mediumProblems = await problemModels.countDocuments({...filter, difficulty: 'Medium'});
+        const hardProblems = await problemModels.countDocuments({...filter, difficulty: 'Hard'});
         return response.sendSuccess(res, {
             totalProblems,
             easyProblems,
@@ -177,6 +211,12 @@ export const getAllProblem = async (req, res) => {
         if (difficulty) {
             filter.difficulty = difficulty;
         }
+        // if (classroomId === 'null' || classroomId === 'public') {
+        //     filter.classRoom = null; // Public problems only
+        // } 
+        // else if (classroomId) {
+        //     filter.classRoom = classroomId;
+        // }
 
         if (!sortBy) {
             sortBy = 'createdAt';
@@ -225,3 +265,32 @@ export const toggleStatus = async (req, res) => {
         return response.sendError(res, error);
     }
 }
+
+export const getProblemsByClassroom = async (req, res) => {
+    try {
+        const { classroomId } = req.params;
+        const { page = 1, size = 20 } = req.query;
+
+        const pageNumber = parseInt(page);
+        const pageSize = parseInt(size);
+        const skip = (pageNumber - 1) * pageSize;
+
+        const filter = {
+            classRoom: classroomId,
+            isActive: true
+        };
+
+        const problems = await problemModels
+            .find(filter, { numberOfTestcases: 0 })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize);
+
+        const total = await problemModels.countDocuments(filter);
+
+        return response.sendSuccess(res, pageDTO(problems, total, pageNumber, pageSize));
+    } catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+};
