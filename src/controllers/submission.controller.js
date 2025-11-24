@@ -51,7 +51,7 @@ export const submitProblem = async (req, res) => {
 export const getSubmissionsByUserId = async (req, res) => {
     try{
         const userId = req.params.id;
-        const {limit = 10, page = 1, language, problemId, contestParticipant} = req.query;
+        const {limit = 10, page = 1, language, problemId, contestParticipant} = req.query;  //Truyền classroomId vào
         const skip = (page - 1) * limit;
         const filter = {
             user: userId,

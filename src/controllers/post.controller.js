@@ -1,7 +1,7 @@
 import sanitizeHtml from "sanitize-html";
 import Post from "../models/post.model.js";
 import response from "../helpers/response.js";
-
+import Comment from '../models/comment.model.js';
 /* Helper to sanitize htmlContent before saving/returning */
 const sanitize = (html) => {
   if (!html) return html;
@@ -378,14 +378,14 @@ export const getAdminPostsList = async (req, res) => {
       .skip(skip)
       .limit(limit)
       .populate("author", "userName fullName avatar email")
-      .select('-htmlContent') // Exclude large HTML content for list view
+      .select('title author images hashtags likesCount commentsCount sharesCount isPublished isPinned viewsCount createdAt updatedAt')
       .lean()
       .exec();
 
     const total = await Post.countDocuments(filter);
 
     return response.sendSuccess(res, {
-      posts,
+      posts, // ✅ Sử dụng trực tiếp, không cần map
       pagination: {
         page,
         limit,
@@ -405,28 +405,65 @@ export const getAdminPostsList = async (req, res) => {
 export const getAdminPostDetail = async (req, res) => {
   try {
     const postId = req.params.id;
+    const commentsPage = parseInt(req.query.commentsPage || '1', 10);
+    const commentsLimit = Math.min(20, parseInt(req.query.commentsLimit || '10', 10));
+    const commentsSkip = (commentsPage - 1) * commentsLimit;
     
+    // Lấy thông tin post
     const post = await Post.findById(postId)
       .populate("author", "userName fullName avatar email")
-      .populate({
-        path: "comments",
-        populate: {
-          path: "user",
-          select: "userName fullName avatar"
-        }
-      })
+      .lean()
       .exec();
 
     if (!post) {
       return response.sendError(res, "Post not found", 404);
     }
 
-    return response.sendSuccess(res, post);
+    // Lấy comments với pagination
+    const [comments, stats] = await Promise.all([
+      Comment.find({ 
+        post: postId, 
+        parentComment: null 
+      })
+        .sort({ createdAt: -1 })
+        .skip(commentsSkip)
+        .limit(commentsLimit)
+        .populate("author", "userName fullName avatar")
+        .select('content author likesCount replies createdAt updatedAt isEdited')
+        .lean()
+        .exec(),
+      Comment.getPostCommentStats(postId)
+    ]);
+
+    // Đếm số replies cho mỗi comment
+    const commentsWithRepliesCount = await Promise.all(
+      comments.map(async (comment) => ({
+        ...comment,
+        repliesCount: comment.replies?.length || 0
+      }))
+    );
+
+    // Combine data
+    const postWithComments = {
+      ...post,
+      comments: commentsWithRepliesCount,
+      commentsCount: stats.totalComments,
+      topLevelCommentsCount: stats.topLevelComments,
+      commentsPagination: {
+        page: commentsPage,
+        limit: commentsLimit,
+        total: stats.topLevelComments,
+        totalPages: Math.ceil(stats.topLevelComments / commentsLimit)
+      }
+    };
+
+    return response.sendSuccess(res, postWithComments);
   } catch (err) {
     console.error("getAdminPostDetail error", err);
     return response.sendError(res, "Failed to get post detail");
   }
 };
+
 
 /**
  * Delete post (Admin - can delete any post)

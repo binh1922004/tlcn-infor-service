@@ -1,8 +1,70 @@
 import SubmissionModel from "../models/submission.model.js";
 import {sendMessageToUser} from "../socket/socket.js";
 import {Status} from "../utils/statusType.js";
-import contestModel from "../models/contest.model.js";
-import {updateContestParticipantProblemScore} from "./contest.service.js";
+
+const updateClassroomProgress = async (userId, problemId, status) => {
+    try {
+        const problemModel = (await import('../models/problem.models.js')).default;
+        const classroomModel = (await import('../models/classroom.model.js')).default;
+        
+        const problem = await problemModel.findById(problemId).select('shortId');
+        if (!problem) {
+            console.warn('⚠️ Problem not found for progress update:', problemId);
+            return { updated: false };
+        }
+
+        // Find all classrooms that have this problem and this student
+        const classrooms = await classroomModel.find({
+            'problems.problemShortId': problem.shortId,
+            'students.userId': userId
+        });
+
+        if (classrooms.length === 0) {
+            console.log('ℹ️ No classrooms found for progress update');
+            return { updated: false };
+        }
+
+        // Determine progress status and score
+        let progressStatus = 'attempted';
+        let progressScore = 0;
+
+        if (status === 'Accepted' || status === 'AC') {
+            progressStatus = 'completed';
+            progressScore = 100;
+        }
+
+        // Update progress in all relevant classrooms
+        const updatedClassrooms = [];
+        for (const classroom of classrooms) {
+            await classroom.updateStudentProgress(
+                userId, 
+                problem.shortId, 
+                progressStatus, 
+                progressScore
+            );
+            updatedClassrooms.push(classroom.classCode);
+            
+            console.log(`✅ Updated progress in classroom ${classroom.classCode}:`, {
+                userId,
+                problemShortId: problem.shortId,
+                status: progressStatus,
+                score: progressScore
+            });
+        }
+
+        return { 
+            updated: true, 
+            classroomsCount: updatedClassrooms.length,
+            classrooms: updatedClassrooms,
+            problemShortId: problem.shortId,
+            progressStatus,
+            progressScore
+        };
+    } catch (error) {
+        console.error('❌ Failed to update classroom progress:', error);
+        return { updated: false, error: error.message };
+    }
+};
 
 export const updateSubmissionStatus = async (submissionId, data) => {
     try {
@@ -28,6 +90,16 @@ export const updateSubmissionStatus = async (submissionId, data) => {
             }
         }
         await submission.save();
+
+        if (submission.problem?._id) {
+            const progressResult = await updateClassroomProgress(
+                submission.user,
+                submission.problem._id,
+                submission.status
+            );
+
+            console.log('📊 Classroom progress update result:', progressResult);
+        }
         sendMessageToUser(submission.user.toString(), 'submission-update', submission);
         return submission;
     }
@@ -36,6 +108,7 @@ export const updateSubmissionStatus = async (submissionId, data) => {
         throw error;
     }
 }
+
 
 export const getLatestSubmissionByUser = async (userId,  problemId) => {
     const filter = { user: userId };

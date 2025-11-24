@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-
+import Post from './post.model.js';
 const commentSchema = new mongoose.Schema({
   content: {
     type: String,
@@ -356,17 +356,45 @@ commentSchema.pre('save', function(next) {
 
 // Post-save middleware để update parent comment replies array
 commentSchema.post('save', async function(doc) {
-  if (doc.parentComment && !doc.wasNew) {
-    try {
+  try {
+    // Nếu có parentComment và không phải comment mới (đã có wasNew = false)
+    if (doc.parentComment && doc.wasNew === false) {
       const parentComment = await this.constructor.findById(doc.parentComment);
       if (parentComment) {
         await parentComment.addReply(doc._id);
       }
-    } catch (error) {
-      console.error("Error updating parent comment replies:", error);
     }
+    
+    // Cập nhật commentsCount cho Post - chỉ khi là comment mới
+    if (doc.wasNew === undefined || doc.wasNew === true) {
+      const stats = await this.constructor.getPostCommentStats(doc.post);
+      await Post.findByIdAndUpdate(
+        doc.post,
+        { $set: { commentsCount: stats.totalComments } },
+        { new: false } // Không cần trả về document
+      );
+      
+      // Đánh dấu là đã xử lý
+      doc.wasNew = false;
+    }
+  } catch (error) {
+    console.error("Error in post-save middleware:", error);
   }
-  doc.wasNew = false;
+});
+commentSchema.pre('save', function(next) {
+  // Lưu trạng thái isNew trước khi save
+  if (this.isNew) {
+    this.wasNew = true;
+  }
+  
+  if (this.isModified('likes')) {
+    this.likesCount = this.likes.length;
+  }
+  if (this.isModified('content') && !this.isNew) {
+    this.isEdited = true;
+    this.editedAt = new Date();
+  }
+  next();
 });
 
 // Pre-remove middleware để cleanup references
@@ -384,6 +412,18 @@ commentSchema.pre('findOneAndDelete', async function(next) {
       }
     };
 
+    // Count total comments to be deleted (including nested)
+    const countRepliesRecursive = async (commentId) => {
+      const replies = await this.model.find({ parentComment: commentId });
+      let count = replies.length;
+      for (const reply of replies) {
+        count += await countRepliesRecursive(reply._id);
+      }
+      return count;
+    };
+
+    const totalDeleted = 1 + await countRepliesRecursive(doc._id);
+
     // Delete all nested replies first
     await deleteRepliesRecursive(doc._id);
 
@@ -394,6 +434,12 @@ commentSchema.pre('findOneAndDelete', async function(next) {
         await parentComment.removeReply(doc._id);
       }
     }
+    
+    // Cập nhật commentsCount cho Post sau khi xóa
+    await Post.findByIdAndUpdate(
+      doc.post,
+      { $inc: { commentsCount: -totalDeleted } }
+    );
     
     next();
   } catch (error) {

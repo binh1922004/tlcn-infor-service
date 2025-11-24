@@ -294,3 +294,66 @@ export const getProblemsByClassroom = async (req, res) => {
         return response.sendError(res, error);
     }
 };
+
+/**
+ * Get public problems (not in classroom) for selection
+ */
+export const getPublicProblemsForSelection = async (req, res) => {
+    try {
+        const { name, tag, difficulty, page = 1, size = 20, excludeClassroom } = req.query;
+        
+        let filter = {
+            isActive: true,
+            isPrivate: false,
+            classRoom: null // Only public problems
+        };
+
+        if (name) {
+            filter.$or = [
+                { name: { $regex: name, $options: 'i' } },
+                { shortId: { $regex: name, $options: 'i' } }
+            ];
+        }
+        
+        if (tag) {
+            filter.tags = tag;
+        }
+        
+        if (difficulty) {
+            filter.difficulty = difficulty;
+        }
+
+        const pageNumber = parseInt(page);
+        const pageSize = parseInt(size);
+        const skip = (pageNumber - 1) * pageSize;
+
+        // ✅ If excludeClassroom is provided, find by classCode instead of _id
+        if (excludeClassroom) {
+            const classroomModel = (await import('../models/classroom.model.js')).default;
+            const classroom = await classroomModel.findOne({ 
+                classCode: excludeClassroom.toUpperCase() // ✅ Changed from findById to findOne with classCode
+            });
+            
+            if (classroom) {
+                const existingProblemIds = classroom.problems.map(p => p.problemShortId);
+                if (existingProblemIds.length > 0) {
+                    filter.shortId = { $nin: existingProblemIds };
+                }
+            }
+        }
+
+        const problems = await problemModels
+            .find(filter, { numberOfTestcases: 0 })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize)
+            .select('name shortId difficulty tags numberOfSubmissions numberOfAccepted statement');
+
+        const total = await problemModels.countDocuments(filter);
+
+        return response.sendSuccess(res, pageDTO(problems, total, pageNumber, pageSize));
+    } catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+};
