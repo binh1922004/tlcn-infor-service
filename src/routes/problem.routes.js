@@ -4,7 +4,8 @@ import {
     getProblemById, getProblemByShortId, getProblems, getProblemStats, toggleStatus, updateProblem,
     uploadProblemImage,
     uploadProblemTestcases,
-    getProblemsByClassroom
+    getProblemsByClassroom,
+    getPublicProblemsForSelection
 } from "../controllers/problem.controller.js";
 import upload, {uploadZip} from "../middlewares/upload.middlewares.js";
 import {authenticateToken, optionalAuth, verifyAdmin} from "../middlewares/auth.middleware.js";
@@ -21,5 +22,5 @@ router.get('/admin/stats', authenticateToken, verifyAdmin, getProblemStats);
 router.get('/admin/problems', authenticateToken, verifyAdmin, getAllProblem);
 router.patch('/admin/toggle/:id', authenticateToken, verifyAdmin, toggleStatus);
 router.get('/classroom/:classroomId', authenticateToken, getProblemsByClassroom);
-
+router.get('/public/selection', getPublicProblemsForSelection);
 export default router

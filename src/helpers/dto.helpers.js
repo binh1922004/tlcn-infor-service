@@ -39,6 +39,7 @@ export const mapToContestDto = (contest) => {
     }
 }
 
+
 export const mapToContestParticipantDto = (participant) => {
     return {
         id: participant._id,

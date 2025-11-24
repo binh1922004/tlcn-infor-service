@@ -26,7 +26,12 @@ import {
   getStudentSubmissions,
   getProblemSubmissions,
   getLeaderboard,
-  getStats
+  getStats,
+  getClassroomProblemsWithProgress,
+  getStudentProgress,
+  getRecentActivities
+  
+  
 } from '../controllers/classroom.controller.js';
 import { 
   authenticateToken, 
@@ -76,23 +81,42 @@ router.use(authenticateToken);
 router.post('/join', joinClassroom);
 router.post('/:classCode/join-by-token', joinClassroomByToken);
 
-// ===== NEW: ALL classCode-based routes (PHẢI ĐẶT TRƯỚC /:id) =====
 router.get('/class/:classCode', verifyClassroomAccess, getClassroomByClassCode);
 router.put('/class/:classCode', verifyClassroomOwner, updateClassroom);
 router.delete('/class/:classCode', verifyClassroomOwner, deleteClassroom);
 router.post('/class/:classCode/regenerate-invite', verifyClassroomOwner, regenerateInviteCode);
 router.post('/class/:classCode/leave', loadClassroom, leaveClassroom);
 
+
 // Problems routes with classCode
 router.get('/class/:classCode/problems', verifyClassroomAccess, getClassroomProblems);
 router.post('/class/:classCode/problems', verifyClassroomTeacher, checkClassroomActive, addProblemToClassroom);
-router.delete('/class/:classCode/problems/:problemShortId', verifyClassroomTeacher, checkClassroomActive, removeProblemFromClassroom);
+router.delete('/class/:classCode/problems/:problemShortId', 
+  verifyClassroomTeacher, 
+  checkClassroomActive, 
+  removeProblemFromClassroom);
+
+router.get('/class/:classCode/problems/with-progress', 
+  authenticateToken, 
+  verifyClassroomAccess, 
+  getClassroomProblemsWithProgress
+);
+
+
 
 // Students routes with classCode
 router.get('/class/:classCode/students', verifyClassroomAccess, getStudents);
 router.post('/class/:classCode/students', verifyClassroomTeacher, checkClassroomActive, addStudent);
 router.delete('/class/:classCode/students/:studentId', verifyClassroomTeacher, checkClassroomActive, removeStudent);
+router.get('/class/:classCode/students/:studentId/progress', 
+  verifyClassroomTeacher, 
+  getStudentProgress
+);
 
+router.get('/class/:classCode/students/:studentId/submissions', 
+  verifyClassroomTeacher, 
+  getStudentSubmissions
+);
 // Upload Excel & Email with classCode
 router.post('/class/:classCode/upload-students-excel', verifyClassroomTeacher, checkClassroomActive, upload.single('file'), uploadStudentsExcel);
 router.post('/class/:classCode/invite-by-email', verifyClassroomTeacher, checkClassroomActive, inviteStudentsByEmail);
@@ -104,7 +128,7 @@ router.get('/class/:classCode/students/:studentId/submissions', verifyClassroomA
 router.get('/class/:classCode/problems/:problemShortId/submissions', verifyClassroomAccess, getProblemSubmissions);
 router.get('/class/:classCode/leaderboard', verifyClassroomAccess, getLeaderboard);
 router.get('/class/:classCode/stats', verifyClassroomAccess, getStats);
-
+router.get('/class/:classCode/activities', verifyClassroomAccess, getRecentActivities);
 // ===== TEACHER/ADMIN ROUTES =====
 router.post('/', verifyAdminOrTeacher, createClassroom);
 

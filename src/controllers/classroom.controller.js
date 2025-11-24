@@ -2,6 +2,7 @@ import response from "../helpers/response.js";
 import classroomModel from "../models/classroom.model.js";
 import userModel from "../models/user.models.js";
 import problemModel from "../models/problem.models.js";
+import submissionModel from "../models/submission.model.js";
 import sendMail from '../utils/sendMail.js';
 import crypto from 'crypto';
 import XLSX from 'xlsx';
@@ -501,7 +502,7 @@ export const inviteStudentsByEmail = async (req, res) => {
     }
 
     const inviteResults = [];
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5175';
+    const frontendUrl = process.env.FE_LOCALHOST_URL || 'http://localhost:5175';
 
     for (const email of emails) {
       try {
@@ -845,9 +846,7 @@ export const joinClassroomByToken = async (req, res) => {
     const { classCode } = req.params;
     const { token } = req.body;
     
-    // ===== Validation req.user =====
     if (!req.user) {
-      console.error('❌ No user in request');
       return response.sendError(res, 'Unauthorized - Please login', 401);
     }
 
@@ -984,18 +983,87 @@ export const getStats = async (req, res) => {
   try {
     const userId = req.user._id;
     const classroom = req.classroom;
-    // Count problems
+    
+    // Total problems in classroom
     const totalProblems = classroom.problems.length;
 
-    // TODO: Implement submission stats when submission model is available
-    // For now, return basic stats
+    // Get student progress from studentProgress array
+    const studentProgress = classroom.studentProgress.filter(
+      p => p.userId.toString() === userId.toString()
+    );
+
+    // Count by status
+    const completedProblems = studentProgress.filter(
+      p => p.status === 'completed'
+    ).length;
+
+    const attemptedProblems = studentProgress.filter(
+      p => p.status === 'attempted'
+    ).length;
+
+    const notAttemptedProblems = totalProblems - completedProblems - attemptedProblems;
+
+    // Calculate completion rate
+    const completionRate = totalProblems > 0 
+      ? Math.round((completedProblems / totalProblems) * 100) 
+      : 0;
+
+    // Calculate average score from completed problems
+    const completedWithScores = studentProgress.filter(
+      p => p.status === 'completed' && p.bestScore > 0
+    );
+
+    const averageScore = completedWithScores.length > 0
+      ? Math.round(
+          completedWithScores.reduce((sum, p) => sum + p.bestScore, 0) / 
+          completedWithScores.length
+        )
+      : 0;
+
     const stats = {
+      // Problems stats
       totalProblems,
-      completed: 0,
-      pending: totalProblems,
-      averageScore: 0,
+      completedProblems,
+      attemptedProblems,
+      notAttemptedProblems,
+      
+      // Percentages
+      completionRate,
+      completedPercentage: totalProblems > 0 
+        ? Math.round((completedProblems / totalProblems) * 100) 
+        : 0,
+      attemptedPercentage: totalProblems > 0 
+        ? Math.round((attemptedProblems / totalProblems) * 100) 
+        : 0,
+      notAttemptedPercentage: totalProblems > 0 
+        ? Math.round((notAttemptedProblems / totalProblems) * 100) 
+        : 0,
+
+      // Score stats
+      averageScore,
+      totalScore: completedWithScores.reduce((sum, p) => sum + p.bestScore, 0),
+
+      // Classroom info
       classCode: classroom.classCode,
-      className: classroom.className
+      className: classroom.className,
+
+      // Additional useful info
+      lastSubmission: studentProgress.length > 0
+        ? studentProgress
+            .filter(p => p.lastSubmissionAt)
+            .sort((a, b) => b.lastSubmissionAt - a.lastSubmissionAt)[0]?.lastSubmissionAt || null
+        : null,
+
+      // Recent completions
+      recentCompletions: studentProgress
+        .filter(p => p.status === 'completed' && p.completedAt)
+        .sort((a, b) => b.completedAt - a.completedAt)
+        .slice(0, 5)
+        .map(p => ({
+          problemShortId: p.problemShortId,
+          score: p.bestScore,
+          completedAt: p.completedAt
+        }))
     };
 
     return response.sendSuccess(res, stats);
@@ -1025,7 +1093,7 @@ export const getSubmissions = async (req, res) => {
 
     return response.sendSuccess(res, submissions);
   } catch (error) {
-    console.error('❌ Error getting submissions:', error);
+    console.error('Error getting submissions:', error);
     return response.sendError(res, 'Internal server error', 500);
   }
 };
@@ -1034,23 +1102,23 @@ export const getSubmissions = async (req, res) => {
  * Get student-specific submissions
  * Route: GET /api/classroom/class/:classCode/students/:studentId/submissions
  */
-export const getStudentSubmissions = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const classroom = req.classroom;
-    // TODO: Implement student submission fetching
-    const submissions = {
-      items: [],
-      student: studentId,
-      classCode: classroom.classCode
-    };
+// export const getStudentSubmissions = async (req, res) => {
+//   try {
+//     const { studentId } = req.params;
+//     const classroom = req.classroom;
+//     // TODO: Implement student submission fetching
+//     const submissions = {
+//       items: [],
+//       student: studentId,
+//       classCode: classroom.classCode
+//     };
 
-    return response.sendSuccess(res, submissions);
-  } catch (error) {
-    console.error('❌ Error getting student submissions:', error);
-    return response.sendError(res, 'Internal server error', 500);
-  }
-};
+//     return response.sendSuccess(res, submissions);
+//   } catch (error) {
+//     console.error('Error getting student submissions:', error);
+//     return response.sendError(res, 'Internal server error', 500);
+//   }
+// };
 /**
  * Get problem-specific submissions
  * Route: GET /api/classroom/class/:classCode/problems/:problemShortId/submissions
@@ -1068,10 +1136,114 @@ export const getProblemSubmissions = async (req, res) => {
 
     return response.sendSuccess(res, submissions);
   } catch (error) {
-    console.error('❌ Error getting problem submissions:', error);
+    console.error(' Error getting problem submissions:', error);
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+/**
+ * Get classroom problems with student progress
+ * Route: GET /api/classroom/class/:classCode/problems/with-progress
+ */
+export const getClassroomProblemsWithProgress = async (req, res) => {
+    try {
+        const { classCode } = req.params;
+        const userId = req.user._id;
+        const { name, tag, difficulty, page = 1, size = 20 } = req.query;
+
+        // Find classroom
+        const classroom = await classroomModel.findOne({ classCode });
+        if (!classroom) {
+            return response.sendError(res, 'Classroom not found', 404);
+        }
+
+        // Check if user has access
+        const isStudent = classroom.students.some(s => s.userId.toString() === userId.toString());
+        const isTeacher = classroom.teachers.some(t => t.toString() === userId.toString());
+        
+        if (!isStudent && !isTeacher) {
+            return response.sendError(res, 'Access denied', 403);
+        }
+
+        // Get problem short IDs from classroom
+        const problemShortIds = classroom.problems.map(p => p.problemShortId);
+
+        // Build filter
+        let filter = {
+            shortId: { $in: problemShortIds }
+        };
+
+        if (name) {
+            filter.name = { $regex: name, $options: 'i' };
+        }
+        if (tag) {
+            filter.tags = tag;
+        }
+        if (difficulty) {
+            filter.difficulty = difficulty;
+        }
+
+        // Pagination
+        const pageNumber = parseInt(page);
+        const pageSize = parseInt(size);
+        const skip = (pageNumber - 1) * pageSize;
+
+        // Get problems
+        const problems = await problemModel
+            .find(filter)
+            .select('-numberOfTestCases')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize);
+
+        // ✅ Enrich with classroom info + student progress
+        const problemsWithProgress = problems.map(problem => {
+            const classroomProblem = classroom.problems.find(
+                p => p.problemShortId === problem.shortId
+            );
+            
+            const progress = classroom.getStudentProgress(userId, problem.shortId);
+            
+            return {
+                ...problem.toObject(),
+                classroomInfo: classroomProblem ? {
+                    addedAt: classroomProblem.addedAt,
+                    dueDate: classroomProblem.dueDate,
+                    maxScore: classroomProblem.maxScore,
+                    isRequired: classroomProblem.isRequired,
+                    order: classroomProblem.order
+                } : null,
+                // ✅ Student progress
+                progress: progress ? {
+                    status: progress.status,
+                    bestScore: progress.bestScore,
+                    lastSubmissionAt: progress.lastSubmissionAt,
+                    completedAt: progress.completedAt
+                } : {
+                    status: 'not_attempted',
+                    bestScore: 0,
+                    lastSubmissionAt: null,
+                    completedAt: null
+                }
+            };
+        });
+
+        const total = await problemModel.countDocuments(filter);
+
+        return response.sendSuccess(res, {
+            items: problemsWithProgress,
+            pagination: {
+                total,
+                page: pageNumber,
+                size: pageSize,
+                totalPages: Math.ceil(total / pageSize)
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error getting problems with progress:', error);
+        return response.sendError(res, 'Internal server error', 500);
+    }
+};
+
 /**
  * Get leaderboard
  * Route: GET /api/classroom/class/:classCode/leaderboard
@@ -1103,10 +1275,296 @@ export const getLeaderboard = async (req, res) => {
       className: classroom.className
     });
   } catch (error) {
-    console.error('❌ Error getting leaderboard:', error);
+    console.error(' Error getting leaderboard:', error);
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+
+/**
+ * Get student progress in classroom
+ * Route: GET /api/classroom/class/:classCode/students/:studentId/progress
+ */
+export const getStudentProgress = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const classroom = req.classroom;
+
+    // Get student info
+    const student = classroom.students.find(
+      s => s.userId.toString() === studentId
+    );
+
+    if (!student) {
+      return response.sendError(res, 'Học sinh không tồn tại trong lớp', 404);
+    }
+
+    // Get all student progress
+    const studentProgress = classroom.getStudentAllProgress(studentId);
+
+    // Get problem details
+    const problemShortIds = classroom.problems.map(p => p.problemShortId);
+    const problems = await problemModel.find({ 
+      shortId: { $in: problemShortIds } 
+    });
+
+    // Enrich problems with progress
+    const problemsWithProgress = classroom.problems.map(cp => {
+      const problem = problems.find(p => p.shortId === cp.problemShortId);
+      const progress = studentProgress.find(p => p.problemShortId === cp.problemShortId);
+
+      return {
+        _id: cp._id,
+        shortId: cp.problemShortId,
+        name: problem?.name || 'Unknown',
+        difficulty: problem?.difficulty || 'medium',
+        maxScore: cp.maxScore,
+        isRequired: cp.isRequired,
+        dueDate: cp.dueDate,
+        addedAt: cp.addedAt,
+        progress: progress ? {
+          status: progress.status,
+          bestScore: progress.bestScore,
+          lastSubmissionAt: progress.lastSubmissionAt,
+          completedAt: progress.completedAt
+        } : {
+          status: 'not_attempted',
+          bestScore: 0,
+          lastSubmissionAt: null,
+          completedAt: null
+        }
+      };
+    });
+
+    // Calculate stats
+    const completedCount = studentProgress.filter(
+      p => p.status === 'completed'
+    ).length;
+
+    const attemptedCount = studentProgress.filter(
+      p => p.status === 'attempted'
+    ).length;
+
+    const totalScore = studentProgress
+      .filter(p => p.status === 'completed')
+      .reduce((sum, p) => sum + p.bestScore, 0);
+
+    const stats = {
+      totalProblems: classroom.problems.length,
+      completedProblems: completedCount,
+      attemptedProblems: attemptedCount,
+      notAttemptedProblems: classroom.problems.length - completedCount - attemptedCount,
+      totalScore,
+      averageScore: completedCount > 0 ? Math.round(totalScore / completedCount) : 0,
+      completionRate: classroom.problems.length > 0 
+        ? Math.round((completedCount / classroom.problems.length) * 100) 
+        : 0
+    };
+
+    return response.sendSuccess(res, {
+      problems: problemsWithProgress,
+      stats,
+      student: {
+        userId: student.userId,
+        joinedAt: student.joinedAt,
+        status: student.status
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting student progress:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+
+/**
+ * Get student submissions in classroom
+ * Route: GET /api/classroom/class/:classCode/students/:studentId/submissions
+ */
+export const getStudentSubmissions = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { page = 1, limit = 20, problemShortId } = req.query;
+    const classroom = req.classroom;
+
+    // Check if student exists
+    const student = classroom.students.find(
+      s => s.userId.toString() === studentId
+    );
+
+    if (!student) {
+      return response.sendError(res, 'Học sinh không tồn tại trong lớp', 404);
+    }
+
+    // Build query for submissions
+    const problemShortIds = classroom.problems.map(p => p.problemShortId);
+    
+    let query = {
+      userId: studentId,
+      problemShortId: { $in: problemShortIds }
+    };
+
+    if (problemShortId) {
+      query.problemShortId = problemShortId;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get submissions from submission model
+    const submissions = await submissionModel
+      .find(query)
+      .populate('problemId', 'name shortId difficulty')
+      .sort({ submittedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await submissionModel.countDocuments(query);
+
+    return response.sendSuccess(res, {
+      submissions,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      },
+      student: {
+        userId: student.userId,
+        joinedAt: student.joinedAt,
+        status: student.status
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting student submissions:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+/**
+ * Get recent activities in classroom
+ * Route: GET /api/classroom/class/:classCode/activities
+ */
+export const getRecentActivities = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+    const { limit = 20 } = req.query;
+
+    // Get problem short IDs
+    const problemShortIds = classroom.problems.map(p => p.problemShortId);
+
+    // Get recent submissions for this classroom
+    const recentSubmissions = await submissionModel
+      .find({
+        problemShortId: { $in: problemShortIds }
+      })
+      .populate('userId', 'userName fullName avatar')
+      .populate('problemId', 'name shortId difficulty')
+      .sort({ submittedAt: -1 })
+      .limit(parseInt(limit));
+
+    // Transform to activities format
+    const activities = recentSubmissions.map(submission => ({
+      _id: submission._id,
+      type: 'submission',
+      user: {
+        _id: submission.userId._id,
+        userName: submission.userId.userName,
+        fullName: submission.userId.fullName,
+        avatar: submission.userId.avatar
+      },
+      problem: {
+        _id: submission.problemId._id,
+        name: submission.problemId.name,
+        shortId: submission.problemId.shortId,
+        difficulty: submission.problemId.difficulty
+      },
+      status: submission.status,
+      score: submission.score || 0,
+      language: submission.language,
+      timestamp: submission.submittedAt,
+      createdAt: submission.submittedAt
+    }));
+
+    // Add student join activities
+    const recentJoins = classroom.students
+      .filter(s => s.status === 'active')
+      .sort((a, b) => b.joinedAt - a.joinedAt)
+      .slice(0, 5)
+      .map(student => ({
+        _id: `join_${student.userId}`,
+        type: 'student_joined',
+        user: student.userId,
+        timestamp: student.joinedAt,
+        createdAt: student.joinedAt
+      }));
+
+    // Add problem added activities
+    const recentProblems = classroom.problems
+      .sort((a, b) => b.addedAt - a.addedAt)
+      .slice(0, 5)
+      .map(problem => ({
+        _id: `problem_${problem.problemShortId}`,
+        type: 'problem_added',
+        problemShortId: problem.problemShortId,
+        timestamp: problem.addedAt,
+        createdAt: problem.addedAt
+      }));
+
+    // Merge all activities and sort by timestamp
+    const allActivities = [
+      ...activities,
+      ...recentJoins,
+      ...recentProblems
+    ]
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, parseInt(limit));
+
+    // Populate user info for join activities if needed
+    const populatedActivities = await Promise.all(
+      allActivities.map(async (activity) => {
+        if (activity.type === 'student_joined' && activity.user) {
+          const user = await userModel.findById(activity.user)
+            .select('userName fullName avatar');
+          return {
+            ...activity,
+            user: user ? {
+              _id: user._id,
+              userName: user.userName,
+              fullName: user.fullName,
+              avatar: user.avatar
+            } : null
+          };
+        }
+        
+        if (activity.type === 'problem_added') {
+          const problem = await problemModel.findOne({ 
+            shortId: activity.problemShortId 
+          }).select('name shortId difficulty');
+          
+          return {
+            ...activity,
+            problem: problem ? {
+              _id: problem._id,
+              name: problem.name,
+              shortId: problem.shortId,
+              difficulty: problem.difficulty
+            } : null
+          };
+        }
+        
+        return activity;
+      })
+    );
+
+    return response.sendSuccess(res, {
+      activities: populatedActivities,
+      total: populatedActivities.length,
+      classCode: classroom.classCode,
+      className: classroom.className
+    });
+  } catch (error) {
+    console.error('❌ Error getting recent activities:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+
 export default {
   createClassroom,
   getClassrooms,
@@ -1133,5 +1591,9 @@ export default {
   getSubmissions,  
   getStudentSubmissions,  
   getProblemSubmissions,  
-  getLeaderboard  
+  getLeaderboard,
+  getClassroomProblemsWithProgress,
+  getStudentProgress,
+  getRecentActivities
+  
 };
