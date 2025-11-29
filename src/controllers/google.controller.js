@@ -11,7 +11,7 @@ export default class AuthGoogleController {
         this.#oauthClient = new google.auth.OAuth2(
             config.client_id,
             config.client_secret_id,
-            'http://localhost:8888/api/auth/google/callback'
+            config.callback_url || 'http://localhost:3000/api/v1/auth/google/callback'
         )
     }
 

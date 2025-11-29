@@ -21,7 +21,7 @@ export const config = {
     passEmail: process.env.PASSWORD_EMAIL,
     client_id: process.env.CLIENT_ID,
     client_secret_id: process.env.CLIENT_SECRET_ID,
-    fe_localhost_url: process.env.FE_LOCALHOST_URL,
+    fe_url: process.env.FE_URL,
     aws_access_key: process.env.AWS_ACCESS_KEY,
     aws_secret_key: process.env.AWS_SECRET_ACCESS_KEY,
     bucket_name: process.env.BUCKET_NAME,
@@ -29,4 +29,5 @@ export const config = {
     kafka_brokers: process.env.KAFKA_BROKER,
     kafka_submission_topic: process.env.KAFKA_SUBMISSION_TOPIC,
     redis_host: process.env.REDIS_HOST,
+    callback_url: process.env.CALLBACK_URL
 }
