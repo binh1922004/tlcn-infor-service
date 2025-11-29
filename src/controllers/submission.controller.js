@@ -111,6 +111,10 @@ export const getSubmissionsByUserId = async (req, res) => {
     if (excludeClassroom === 'true') {
       filter.classroom = null;
     }
+    const userIdJWT = req.user?._id;
+    if (userIdJWT && userIdJWT.toString() !== userId){
+      filter.isPrivate = false;
+    }
     const submissions = await SubmissionModel.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)

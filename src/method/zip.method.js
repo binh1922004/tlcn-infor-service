@@ -27,7 +27,7 @@ export class CustomZipProcessor {
                 },
                 summary: {
                     totalFolders: validation.folderCount,
-                    totalFiles: processedFiles.length,
+                    // totalFiles: processedFiles.length,
                     structure: 'id/in/id_X.in and id/out/id_X.out'
                 }
             };
@@ -119,6 +119,7 @@ export class CustomZipProcessor {
                     }
 
                     const folderFiles = validation.filesByFolder.get(folderName);
+                    console.log('📄 Processing file:', folderFiles);
                     if (fileExtension === '.inp') {
                         folderFiles.in = true;
                     } else if (fileExtension === '.out') {

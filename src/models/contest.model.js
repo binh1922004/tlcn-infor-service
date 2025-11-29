@@ -13,6 +13,7 @@ const contestSchema = new mongoose.Schema({
         problemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Problem', required: true },
         order: { type: Number, default: 0 },
         point: { type: Number, default: 0 },
+        noOfSolved: { type: Number, default: 0 },
     }],
     code: { type: String, default: null, unique: true },
     isPrivate: { type: Boolean, default: false },

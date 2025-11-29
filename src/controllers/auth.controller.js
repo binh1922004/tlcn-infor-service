@@ -225,8 +225,7 @@ export const googleCallback = async (req, res, next) => {
 		}
 		const {accessToken, refreshToken} = authMethod.generateToken(user)
 		actionRefreshCookie(res, refreshToken);
-		actionAccessToken(res, accessToken);
-		return res.redirect(config.fe_localhost_url + '/profile')
+		return res.redirect(config.fe_localhost_url + '/profile/' + user.userName)
 	}
 	else{
 		actionEmailCookie(res, payload.email);
