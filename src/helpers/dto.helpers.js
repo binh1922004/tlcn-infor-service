@@ -1,3 +1,4 @@
+import moment from "moment-timezone";
 
 export const mapToUserDto = (user) => {
     return {
@@ -19,3 +20,44 @@ export const pageDTO = (data, total, page, limit) => {
         last: page>=total/limit-1
     }
 }
+
+export const mapToContestDto = (contest) => {
+    return {
+        _id: contest._id,
+        title: contest.title,
+        description: contest.description,
+        startTime: convertToUTC7(contest.startTime),
+        endTime: convertToUTC7(contest.endTime),
+        isPrivate: contest.isPrivate,
+        isActive: contest.isActive,
+        problems: contest.problems,
+        createdAt: contest.createdAt,
+        updatedAt: contest.updatedAt,
+        shortId: contest.shortId,
+        code: contest.code,
+        isRegistered: contest.isRegistered,
+        noOfSolved: contest.noOfSolved,
+    }
+}
+
+
+export const mapToContestParticipantDto = (participant) => {
+    return {
+        id: participant._id,
+        user: participant.userId,
+        contestId: participant.contestId,
+        joinedAt: convertToUTC7(participant.joinedAt),
+        mode: participant.mode,
+        startTime: convertToUTC7(participant.startTime),
+        endTime: convertToUTC7(participant.endTime),
+        score: participant.score,
+        isRegistered: participant.isRegistered,
+        isStarted: participant.isStarted,
+        problemScores: participant.problemScores,
+        lastBestSubmissionScoreAt: convertToUTC7(participant.lastBestSubmissionScoreAt),
+    }
+}
+
+const convertToUTC7 = (date) => {
+    return moment(date).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD HH:mm:ss');
+};

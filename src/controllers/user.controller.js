@@ -46,23 +46,36 @@ export const getUserByUsername = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
+    // req.userName từ authenticateToken middleware
     const username = req.userName;
-    const userUpdate = req.body;
+    const { fullName, dob, School, avatar } = req.body;
 
     const userFound = await userModel.findByUsername(username);
-    if (username !== userFound.userName) {
-      return response.sendError(res, "Bad request", 401);
+    
+    if (!userFound) {
+      return response.sendError(res, "User not found", 404);
     }
-    for (let key in userUpdate) {
-      userFound[key] = userUpdate[key];
-    }
+
+    // Update các field được phép
+    if (fullName !== undefined) userFound.fullName = fullName;
+    if (dob !== undefined) userFound.dob = dob;
+    if (School !== undefined) userFound.School = School;
+    if (avatar !== undefined) userFound.avatar = avatar;
+
+    // Update timestamp
+    userFound.updatedAt = new Date();
+    
     await userFound.save();
+    
     return response.sendSuccess(res, {
       _id: userFound._id,
       userName: userFound.userName,
       fullName: userFound.fullName,
-      isOwner: req.userName != null && userFound.userName === req.userName,
+      email: userFound.email,
+      avatar: userFound.avatar,
       dob: userFound.dob,
+      School: userFound.School,
+      isOwner: true,
     });
   } catch (err) {
     next(err);
