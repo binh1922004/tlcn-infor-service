@@ -8,7 +8,7 @@ const router = express.Router()
 
 router.get('/', authenticateToken, userController.getUsers)
 router.get('/profile/:username', optionalAuth, userController.getUserByUsername)
-router.put('/profile/update', authenticateToken, userController.updateUser)
+router.put('/profile/update', authenticateToken, userController.updateUser) 
 // Routes upload avatar với Cloudinary
 router.post('/profile/avatar/upload', authenticateToken, upload.single('avatar'), uploadAvatar)
 router.get('/profile/avatar/current', authenticateToken, getCurrentUserAvatar) 

@@ -4,6 +4,7 @@ import userModel from "../models/user.models.js";
 import problemModel from "../models/problem.models.js";
 import submissionModel from "../models/submission.model.js";
 import sendMail from '../utils/sendMail.js';
+import materialModel from "../models/material.model.js";
 import crypto from 'crypto';
 import XLSX from 'xlsx';
 /**
@@ -956,6 +957,12 @@ export const getClassroomByClassCode = async (req, res) => {
       };
     });
 
+    // ✅ Đếm số lượng tài liệu từ materialModel
+    const totalMaterials = await materialModel.countDocuments({
+      classroom: classroom._id,
+      status: 'active'
+    });
+
     const classroomObj = classroom.toObject();
 
     return response.sendSuccess(res, {
@@ -965,7 +972,8 @@ export const getClassroomByClassCode = async (req, res) => {
         stats: {
           totalStudents: classroom.students.filter(s => s.status === 'active').length,
           totalProblems: classroom.problems.length,
-          totalTeachers: classroom.teachers.length + 1
+          totalTeachers: classroom.teachers.length + 1,
+          totalMaterials: totalMaterials 
         }
       },
       role: req.isTeacher || req.user.role === 'admin' ? 'teacher' : 'student'
@@ -1079,21 +1087,47 @@ export const getStats = async (req, res) => {
 export const getSubmissions = async (req, res) => {
   try {
     const classroom = req.classroom;
-    const { page = 1, limit = 20 } = req.query;
-    // TODO: Implement submission fetching when submission model is available
-    const submissions = {
-      items: [],
-      pagination: {
-        total: 0,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: 0
-      }
+    const { page = 1, limit = 20, problemShortId, userId } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Filter submissions by classroom
+    let filter = {
+      classroom: classroom._id
     };
 
-    return response.sendSuccess(res, submissions);
+    if (problemShortId) {
+      const problem = await problemModel.findOne({ shortId: problemShortId });
+      if (problem) {
+        filter.problem = problem._id;
+      }
+    }
+
+    if (userId) {
+      filter.user = userId;
+    }
+
+    const submissions = await submissionModel
+      .find(filter)
+      .populate('user', 'userName fullName avatar')
+      .populate('problem', 'name shortId difficulty')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await submissionModel.countDocuments(filter);
+
+    return response.sendSuccess(res, {
+      submissions,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
   } catch (error) {
-    console.error('Error getting submissions:', error);
+    console.error('❌ Error getting submissions:', error);
     return response.sendError(res, 'Internal server error', 500);
   }
 };

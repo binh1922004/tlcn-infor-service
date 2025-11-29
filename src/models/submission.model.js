@@ -37,6 +37,13 @@ const problemSchema = new mongoose.Schema({
         }
     },
     score: {type: Number, default: 0}, // For future use in contests with score-based evaluation
+
+    classroom: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Classroom',
+    default: null,
+    index: true
+  },
 }, {
     timestamps: true, //auto generate createAt and updateAt
     strict: true
@@ -49,5 +56,6 @@ problemSchema.post('save', function (collection) {
         mongoose.model('Problem').findByIdAndUpdate(problemId, { $inc: { numberOfAccepted: 1 } }).exec();
     }
 })
+problemSchema.index({ user: 1, classroom: 1 });
 
 export default mongoose.model('Submission', problemSchema);
