@@ -327,11 +327,11 @@ export const getPublicProblemsForSelection = async (req, res) => {
         const pageSize = parseInt(size);
         const skip = (pageNumber - 1) * pageSize;
 
-        // ✅ If excludeClassroom is provided, find by classCode instead of _id
+        //  If excludeClassroom is provided, find by classCode instead of _id
         if (excludeClassroom) {
             const classroomModel = (await import('../models/classroom.model.js')).default;
             const classroom = await classroomModel.findOne({ 
-                classCode: excludeClassroom.toUpperCase() // ✅ Changed from findById to findOne with classCode
+                classCode: excludeClassroom.toUpperCase() // Changed from findById to findOne with classCode
             });
             
             if (classroom) {
