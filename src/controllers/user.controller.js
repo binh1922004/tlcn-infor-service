@@ -18,10 +18,34 @@ export const getUsers = async (req, res, next) => {
     next(err);
   }
 };
+export const getProfileByUserName = async (req, res, next) => {
+  try {
+    const username = req.params.username;
+    console.log(username);
+    const user = await userModel.findByUsername(username);
+    if (!user) {
+      return response.sendError(res, "User is not existed", 404);
+    }
+
+    return response.sendSuccess(res, {
+      _id: user._id,
+      userName: user.userName,
+      fullName: user.fullName,
+      email: user.email,
+      avatar: user.avatar,
+      active: user.active,
+      role: user.role,
+      isOwner: req.user?.userName != null && user.userName === req.user?.userName,
+      dob: user.dob,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const getUserByUsername = async (req, res, next) => {
   try {
-    const username = req.params.username;
+    const username = req.params.userName;
     console.log(username);
     const user = await userModel.findByUsername(username);
     if (!user) {
