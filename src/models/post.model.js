@@ -23,6 +23,10 @@ const postSchema = new mongoose.Schema({
     type: String, // For rich text content
     maxlength: 10000
   },
+  codeSnippet: {
+    type: String,
+    maxlength: 10000
+  },
   author: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

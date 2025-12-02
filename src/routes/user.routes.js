@@ -7,7 +7,7 @@ import userStatsRoutes from './userStats.routes.js';
 const router = express.Router()
 
 router.get('/', authenticateToken, userController.getUsers)
-router.get('/profile/:username', optionalAuth, userController.getUserByUsername)
+router.get('/profile/:username', optionalAuth, userController.getProfileByUserName)
 router.put('/profile/update', authenticateToken, userController.updateUser) 
 // Routes upload avatar với Cloudinary
 router.post('/profile/avatar/upload', authenticateToken, upload.single('avatar'), uploadAvatar)

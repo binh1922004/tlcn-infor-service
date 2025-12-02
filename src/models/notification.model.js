@@ -46,7 +46,7 @@ const notificationSchema = new mongoose.Schema({
     relatedTo: {
         type: {
             type: String,
-            enum: ['Submission', 'Contest', 'User']
+            enum: ['Submission', 'Contest', 'User', 'Post']
         },
         id: mongoose.Schema.Types.ObjectId,
         preview: mongoose.Schema.Types.Mixed // Flexible object

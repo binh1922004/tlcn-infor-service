@@ -114,8 +114,9 @@ export const getSubmissionsByUserId = async (req, res) => {
     const submissions = await SubmissionModel.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
-
+      .limit(limit)
+      .populate("user", "userName")
+      .populate("problem", "name");
     const total = await SubmissionModel.countDocuments(filter);
     // sendMessageToUser(userId, 'submission-update', submissions)
     return response.sendSuccess(res, pageDTO(submissions, total, page, limit));

@@ -937,10 +937,59 @@ export const joinClassroomByToken = async (req, res) => {
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+// export const getClassroomByClassCode = async (req, res) => {
+//   try {
+//     const { classCode } = req.params;
+//     const classroom = req.classroom; // Đã load từ middleware
+
+//     await classroom.populate('owner', 'userName fullName avatar email');
+//     await classroom.populate('teachers', 'userName fullName avatar email');
+//     await classroom.populate('students.userId', 'userName fullName avatar email');
+
+//     const problemShortIds = classroom.problems.map(p => p.problemShortId);
+//     const problems = await problemModel.find({ shortId: { $in: problemShortIds } });
+
+//     const problemsWithDetails = classroom.problems.map(cp => {
+//       const problem = problems.find(p => p.shortId === cp.problemShortId);
+//       return {
+//         ...cp.toObject(),
+//         problem: problem || null
+//       };
+//     });
+
+//     // ✅ Đếm số lượng tài liệu từ materialModel
+//     const totalMaterials = await materialModel.countDocuments({
+//       classroom: classroom._id,
+//       status: 'active'
+//     });
+
+//     const classroomObj = classroom.toObject();
+
+//     return response.sendSuccess(res, {
+//       classroom: {
+//         ...classroomObj,
+//         problems: problemsWithDetails,
+//         stats: {
+//           totalStudents: classroom.students.filter(s => s.status === 'active').length,
+//           totalProblems: classroom.problems.length,
+//           totalTeachers: classroom.teachers.length + 1,
+//           totalMaterials: totalMaterials 
+//         }
+//       },
+//       role: req.isTeacher || req.user.role === 'admin' ? 'teacher' : 'student'
+//     });
+//   } catch (error) {
+//     console.error('❌ Error getting classroom by classCode:', error);
+//     return response.sendError(res, 'Internal server error', 500);
+//   }
+// };
 export const getClassroomByClassCode = async (req, res) => {
   try {
     const { classCode } = req.params;
     const classroom = req.classroom; // Đã load từ middleware
+    const userId = req.user._id; //  Lấy userId từ authenticated user
+
+    console.log('👤 User requesting classroom:', userId);
 
     await classroom.populate('owner', 'userName fullName avatar email');
     await classroom.populate('teachers', 'userName fullName avatar email');
@@ -963,12 +1012,23 @@ export const getClassroomByClassCode = async (req, res) => {
       status: 'active'
     });
 
+    // FIX: Filter studentProgress theo userId hiện tại
+    const allProgress = classroom.studentProgress || [];
+    const userProgress = allProgress.filter(
+      progress => progress.userId.toString() === userId.toString()
+    );
+
+    console.log('📊 Total progress records in classroom:', allProgress.length);
+    console.log('📊 User progress records:', userProgress.length);
+    console.log('📊 User progress data:', userProgress);
+
     const classroomObj = classroom.toObject();
 
     return response.sendSuccess(res, {
       classroom: {
         ...classroomObj,
         problems: problemsWithDetails,
+        studentProgress: userProgress, // ✅ CHỈ trả về progress của user hiện tại
         stats: {
           totalStudents: classroom.students.filter(s => s.status === 'active').length,
           totalProblems: classroom.problems.length,

@@ -6,8 +6,8 @@ import bcrypt from "bcrypt";
 import contestParticipantModel from "../models/contestParticipant.model.js";
 import {contestIsRunning, getRankingForContest, getUserParticipantStatus} from "../service/contest.service.js";
 import mongoose from "mongoose";
-import {sendMessageToContestRoom} from "../socket/socket.js";
-
+import {createContestBroadcast, createContestAnnouncementNotification} from "../service/notification.service.js";
+import {broadcastNewContest, sendMessageToContestRoom} from "../socket/socket.js";
 const SALT_ROUNDS = 10
 
 export const create = async  (req, res, next) => {
@@ -29,6 +29,56 @@ export const create = async  (req, res, next) => {
             return response.sendError(res, 'End time must be after start time', 400);
         }
         const createdContest = await contestModel.create(contest);
+        //  Tạo thông báo cho tất cả users nếu contest được active
+        if (user?.role === 'admin' && createdContest.isActive) {
+            try {
+                await createContestCreatedNotification(
+                    createdContest._id,
+                    {
+                        title: createdContest.title,
+                        description: createdContest.description,
+                        startTime: createdContest.startTime,
+                        endTime: createdContest.endTime,
+                        duration: createdContest.duration,
+                        code: createdContest.code,
+                        isPrivate: createdContest.isPrivate
+                    },
+                    {
+                        _id: user._id,
+                        userName: user.userName,
+                        fullName: user.fullName,
+                        avatar: user.avatar
+                    }
+                );
+
+                //  Broadcast qua socket
+                const notificationData = {
+                    contestId: createdContest._id,
+                    contestCode: createdContest.code,
+                    title: createdContest.title,
+                    message: `${user.fullName || user.userName} đã tạo kỳ thi: "${createdContest.title}"`,
+                    author: {
+                        _id: user._id,
+                        userName: user.userName,
+                        fullName: user.fullName,
+                        avatar: user.avatar
+                    },
+                    preview: {
+                        description: createdContest.description?.substring(0, 150) + '...',
+                        startTime: createdContest.startTime,
+                        endTime: createdContest.endTime
+                    },
+                    createdAt: createdContest.createdAt,
+                    actionUrl: `/contest/${createdContest.code}`
+                };
+
+                broadcastNewContest(notificationData, user._id);
+                
+                console.log(`✅ Contest notification broadcast for contest ${createdContest._id}`);
+            } catch (notificationError) {
+                console.error('❌ Error sending contest notification:', notificationError);
+            }
+        }
         return response.sendSuccess(res, mapToContestDto(createdContest));
     }
     catch (error) {
@@ -199,16 +249,57 @@ export const deleteContest = async (req, res, next) => {
 export const toggleContestStatus = async (req, res, next) => {
     try {
         const contestId = req.params.id;
+        const user = req.user;
+        
+        console.log(`🔄 Toggle contest status - ID: ${contestId}, User: ${user.userName}`);
+        
         const contest = await contestModel.findById(contestId);
         if (!contest) {
             return response.sendError(res, 'Contest not found', 404);
         }
+        
+        const wasInactive = !contest.isActive;
         contest.isActive = !contest.isActive;
         await contest.save();
+        
+        console.log(`✅ Contest status changed - isActive: ${contest.isActive}`);
+        
+        // ✅ Nếu contest vừa được active, gửi thông báo
+        if (wasInactive && contest.isActive && user?.role === 'admin') {
+            try {
+                // Tạo broadcast notification
+                const broadcast = await createContestBroadcast(
+                    contest._id,
+                    {
+                        title: contest.title,
+                        description: contest.description,
+                        startTime: contest.startTime,
+                        endTime: contest.endTime,
+                        duration: contest.duration,
+                        code: contest.code,
+                        isPrivate: contest.isPrivate
+                    },
+                    {
+                        _id: user._id,
+                        userName: user.userName,
+                        fullName: user.fullName,
+                        avatar: user.avatar
+                    }
+                );
+                
+                // Gửi realtime qua socket
+                broadcastNewContest(broadcast);
+                
+                console.log(`✅ Broadcast created and sent for contest ${contest._id}`);
+            } catch (notificationError) {
+                console.error('❌ Error sending contest notification:', notificationError);
+            }
+        }
+        
         return response.sendSuccess(res, contest);
     }
     catch (error) {
-        console.log(error)
+        console.log('❌ Error in toggleContestStatus:', error)
         return response.sendError(res, error);
     }
 }
@@ -345,6 +436,48 @@ export const createContestNotification = async (req, res, next) => {
 
         const notification = createContestNotification(contestId, message);
         sendMessageToContestRoom(contestId, 'contest-notification', notification);
+        return response.sendSuccess(res, notification);
+    }
+    catch (error) {
+        console.log(error)
+        return response.sendError(res, error);
+    }
+}
+export const createContestAnnouncement = async (req, res, next) => {
+    try {
+        const contestId = req.params.id;
+        const {message} = req.body;
+        const user = req.user;
+        
+        const contest = await contestModel.findById(contestId);
+        if (!contest) {
+            return response.sendError(res, 'Contest not found', 404);
+        }
+
+        // Tạo notification cho participants
+        const notification = await createContestAnnouncementNotification(
+            contestId,
+            message,
+            {
+                _id: user._id,
+                userName: user.userName,
+                fullName: user.fullName,
+                avatar: user.avatar
+            }
+        );
+        
+        // Broadcast qua socket cho room contest
+        sendMessageToContestRoom(contestId, 'contest-announcement', {
+            contestId,
+            message,
+            author: {
+                _id: user._id,
+                userName: user.userName,
+                fullName: user.fullName
+            },
+            createdAt: new Date()
+        });
+        
         return response.sendSuccess(res, notification);
     }
     catch (error) {
