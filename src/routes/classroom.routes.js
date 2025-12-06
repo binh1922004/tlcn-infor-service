@@ -29,7 +29,9 @@ import {
   getStats,
   getClassroomProblemsWithProgress,
   getStudentProgress,
-  getRecentActivities
+  getRecentActivities,
+  getGradeBook,
+  exportGradeBook
   
   
 } from '../controllers/classroom.controller.js';
@@ -126,7 +128,18 @@ router.post('/class/:classCode/create-accounts', verifyClassroomTeacher, checkCl
 router.get('/class/:classCode/submissions', verifyClassroomAccess, getSubmissions);
 router.get('/class/:classCode/students/:studentId/submissions', verifyClassroomAccess, getStudentSubmissions);
 router.get('/class/:classCode/problems/:problemShortId/submissions', verifyClassroomAccess, getProblemSubmissions);
-router.get('/class/:classCode/leaderboard', verifyClassroomAccess, getLeaderboard);
+router.get('/:classCode/leaderboard', verifyClassroomAccess, getLeaderboard);
+router.get('/:classCode/gradebook', 
+  authenticateToken, 
+  verifyClassroomTeacher, 
+  getGradeBook
+);
+
+router.get('/:classCode/gradebook/export', 
+  authenticateToken, 
+  verifyClassroomTeacher, 
+  exportGradeBook
+);
 router.get('/class/:classCode/stats', verifyClassroomAccess, getStats);
 router.get('/class/:classCode/activities', verifyClassroomAccess, getRecentActivities);
 // ===== TEACHER/ADMIN ROUTES =====
