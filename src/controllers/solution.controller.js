@@ -366,24 +366,44 @@ export const voteSolution = async (req, res) => {
     const { voteType } = req.body; // 'upvote' or 'downvote'
     const userId = req.user._id;
 
+    // Validate vote type
+    if (!['upvote', 'downvote'].includes(voteType)) {
+      return response.sendError(res, 'Vote type phải là "upvote" hoặc "downvote"', 400);
+    }
+
     const solution = await solutionModel.findById(id);
     if (!solution) {
       return response.sendError(res, 'Không tìm thấy solution', 404);
     }
 
+    // Prevent voting own solution
+    if (solution.author.toString() === userId.toString()) {
+      return response.sendError(res, 'Không thể vote solution của chính mình', 403);
+    }
+
+    // Process vote
     if (voteType === 'upvote') {
       await solution.upvote(userId);
-    } else if (voteType === 'downvote') {
-      await solution.downvote(userId);
     } else {
-      return response.sendError(res, 'Invalid vote type', 400);
+      await solution.downvote(userId);
+    }
+
+    // Get updated vote status
+    const userIdStr = userId.toString();
+    let userVote = null;
+    
+    if (solution.votes.upvotes.some(id => id.toString() === userIdStr)) {
+      userVote = 'upvote';
+    } else if (solution.votes.downvotes.some(id => id.toString() === userIdStr)) {
+      userVote = 'downvote';
     }
 
     return response.sendSuccess(res, {
       upvoteCount: solution.upvoteCount,
       downvoteCount: solution.downvoteCount,
-      voteScore: solution.voteScore
-    });
+      voteScore: solution.voteScore,
+      userVote
+    }, 'Vote thành công');
   } catch (error) {
     console.error('❌ Vote solution error:', error);
     return response.sendError(res, 'Internal server error', 500);
@@ -594,6 +614,27 @@ export const addReply = async (req, res) => {
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+/**
+ * Check if solution exists for problem
+ */
+export const checkSolutionExists = async (req, res) => {
+  try {
+    const { problemShortId } = req.params;
+    
+    const solution = await solutionModel
+      .findOne({ problemShortId })
+      .select('_id title status author')
+      .lean();
+    
+    return response.sendSuccess(res, {
+      exists: !!solution,
+      solution: solution || null
+    });
+  } catch (error) {
+    console.error('❌ Check solution error:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
 
 /**
  * Moderate solution (Admin only)
@@ -639,6 +680,90 @@ export const moderateSolution = async (req, res) => {
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+export const getUserVoteStatus = async (req, res) => {
+  try {
+    const { solutionIds } = req.query; // comma-separated IDs
+    const userId = req.user._id;
+
+    if (!solutionIds) {
+      return response.sendError(res, 'Solution IDs required', 400);
+    }
+
+    const ids = solutionIds.split(',');
+    const solutions = await solutionModel
+      .find({ _id: { $in: ids } })
+      .select('_id votes')
+      .lean();
+
+    const voteStatus = {};
+    const userIdStr = userId.toString();
+
+    solutions.forEach(solution => {
+      const solutionId = solution._id.toString();
+      
+      if (solution.votes.upvotes.some(id => id.toString() === userIdStr)) {
+        voteStatus[solutionId] = 'upvote';
+      } else if (solution.votes.downvotes.some(id => id.toString() === userIdStr)) {
+        voteStatus[solutionId] = 'downvote';
+      } else {
+        voteStatus[solutionId] = null;
+      }
+    });
+
+    return response.sendSuccess(res, voteStatus);
+  } catch (error) {
+    console.error('❌ Get vote status error:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+export const removeVote = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const solution = await solutionModel.findById(id);
+    if (!solution) {
+      return response.sendError(res, 'Không tìm thấy solution', 404);
+    }
+
+    const userIdStr = userId.toString();
+    const upvoteIndex = solution.votes.upvotes.findIndex(id => id.toString() === userIdStr);
+    const downvoteIndex = solution.votes.downvotes.findIndex(id => id.toString() === userIdStr);
+
+    let removed = false;
+
+    // Remove from upvotes
+    if (upvoteIndex > -1) {
+      solution.votes.upvotes.splice(upvoteIndex, 1);
+      solution.upvoteCount = Math.max(0, solution.upvoteCount - 1);
+      removed = true;
+    }
+
+    // Remove from downvotes
+    if (downvoteIndex > -1) {
+      solution.votes.downvotes.splice(downvoteIndex, 1);
+      solution.downvoteCount = Math.max(0, solution.downvoteCount - 1);
+      removed = true;
+    }
+
+    if (!removed) {
+      return response.sendError(res, 'Bạn chưa vote solution này', 400);
+    }
+
+    solution.voteScore = solution.upvoteCount - solution.downvoteCount;
+    await solution.save();
+
+    return response.sendSuccess(res, {
+      upvoteCount: solution.upvoteCount,
+      downvoteCount: solution.downvoteCount,
+      voteScore: solution.voteScore,
+      userVote: null
+    }, 'Đã bỏ vote');
+  } catch (error) {
+    console.error('❌ Remove vote error:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
 
 export default {
   createSolution,
@@ -653,5 +778,8 @@ export default {
   voteComment,
   addReply,
   moderateSolution,
-  getAllSolutions
+  getAllSolutions,
+  checkSolutionExists,
+  getUserVoteStatus,
+  removeVote
 };

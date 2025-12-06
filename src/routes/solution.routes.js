@@ -8,7 +8,7 @@ const router = express.Router();
 // ===== PUBLIC ROUTES =====
 // Get solutions for a problem (public can view published solutions)
 router.get('/problem/:problemShortId', solutionController.getProblemSolutions);
-
+router.get('/check/:problemShortId', authenticateToken, verifyAdmin, solutionController.checkSolutionExists);
 // Get solution by ID (public can view published solutions)
 router.get('/:id', solutionController.getSolutionById);
 
@@ -25,6 +25,8 @@ router.delete('/:id', solutionController.deleteSolution);
 
 // Vote solution
 router.post('/:id/vote', solutionController.voteSolution);
+router.delete('/:id/vote', solutionController.removeVote);
+router.get('/votes/status', solutionController.getUserVoteStatus);
 
 // Comments
 router.post('/:id/comments', solutionController.addComment);
