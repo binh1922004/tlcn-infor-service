@@ -1,7 +1,7 @@
 import solutionModel from '../models/solution.models.js';
 import problemModel from '../models/problem.models.js';
 import response from '../helpers/response.js';
-
+import User from '../models/user.models.js'; 
 /**
  * Create new solution (Admin or approved users)
  */
@@ -213,13 +213,18 @@ export const getProblemSolutions = async (req, res) => {
     ]);
 
     // Add vote status for current user if logged in
-    if (req.user) {
-      const userId = req.user._id.toString();
+    const userId = req.user?._id;
+    if (userId) {
+      const userIdStr = userId.toString();
       solutions.forEach(solution => {
         solution.userVote = null;
-        if (solution.votes.upvotes.some(id => id.toString() === userId)) {
+        
+        // Check if user has upvoted
+        if (solution.votes?.upvotes?.some(id => id.toString() === userIdStr)) {
           solution.userVote = 'upvote';
-        } else if (solution.votes.downvotes.some(id => id.toString() === userId)) {
+        } 
+        // Check if user has downvoted
+        else if (solution.votes?.downvotes?.some(id => id.toString() === userIdStr)) {
           solution.userVote = 'downvote';
         }
       });
@@ -247,38 +252,91 @@ export const getSolutionById = async (req, res) => {
     const solution = await solutionModel
       .findById(id)
       .populate('author', 'userName fullName avatar role')
-      .populate('comments.user', 'userName fullName avatar')
-      .populate('comments.replies.user', 'userName fullName avatar');
+      .select('-comments') // Exclude comments array
+      .lean();
 
     if (!solution) {
-      return response.sendError(res, 'Không tìm thấy solution', 404);
+      return response.sendError(res, 'Solution not found', 404);
     }
 
-    // Check if user can view
-    if (solution.status !== 'published' && 
-        (!req.user || (req.user._id.toString() !== solution.author._id.toString() && req.user.role !== 'admin'))) {
-      return response.sendError(res, 'Không có quyền xem solution này', 403);
-    }
+    // Increment view count
+    await solutionModel.findByIdAndUpdate(id, { $inc: { viewCount: 1 } });
+    solution.viewCount = (solution.viewCount || 0) + 1;
 
-    // Increment view count (only if not author)
-    if (!req.user || req.user._id.toString() !== solution.author._id.toString()) {
-      await solution.incrementView();
-    }
-
-    // Add user vote status
-    if (req.user) {
-      const userId = req.user._id.toString();
+    // Add vote status for current user if logged in
+    const userId = req.user?._id;
+    if (userId) {
+      const userIdStr = userId.toString();
       solution.userVote = null;
-      if (solution.votes.upvotes.some(id => id.toString() === userId)) {
+      
+      if (solution.votes?.upvotes?.some(id => id.toString() === userIdStr)) {
         solution.userVote = 'upvote';
-      } else if (solution.votes.downvotes.some(id => id.toString() === userId)) {
+      } else if (solution.votes?.downvotes?.some(id => id.toString() === userIdStr)) {
         solution.userVote = 'downvote';
       }
+    } else {
+      solution.userVote = null;
     }
+
+    // Get total comment count from the full solution (for display)
+    const fullSolution = await solutionModel.findById(id).select('commentCount').lean();
+    solution.totalComments = fullSolution?.commentCount || 0;
 
     return response.sendSuccess(res, solution);
   } catch (error) {
-    console.error('❌ Get solution error:', error);
+    console.error('❌ Get solution by ID error:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+
+export const getSolutionComments = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    const solution = await solutionModel
+      .findById(id)
+      .select('comments commentCount')
+      .lean();
+
+    if (!solution) {
+      return response.sendError(res, 'Solution not found', 404);
+    }
+
+    const totalComments = solution.comments?.length || 0;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const totalPages = Math.ceil(totalComments / parseInt(limit));
+
+    // Get paginated comments
+    const paginatedComments = solution.comments?.slice(skip, skip + parseInt(limit)) || [];
+
+    // Populate user info for comments and replies
+    for (let comment of paginatedComments) {
+      // Populate comment user
+      const commentUser = await User.findById(comment.user).select('userName fullName avatar').lean();
+      comment.user = commentUser;
+
+      // Populate reply users
+      if (comment.replies && comment.replies.length > 0) {
+        for (let reply of comment.replies) {
+          const replyUser = await User.findById(reply.user).select('userName fullName avatar').lean();
+          reply.user = replyUser;
+        }
+      }
+    }
+
+    return response.sendSuccess(res, {
+      comments: paginatedComments,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        totalComments,
+        hasMore: skip + paginatedComments.length < totalComments,
+        limit: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get solution comments error:', error);
     return response.sendError(res, 'Internal server error', 500);
   }
 };
@@ -769,6 +827,7 @@ export default {
   createSolution,
   getProblemSolutions,
   getSolutionById,
+  getSolutionComments,
   updateSolution,
   deleteSolution,
   voteSolution,

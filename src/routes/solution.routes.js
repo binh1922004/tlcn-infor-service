@@ -1,41 +1,42 @@
 import express from 'express';
 import solutionController from '../controllers/solution.controller.js';
-import { authenticateToken } from '../middlewares/auth.middleware.js';
+import { authenticateToken, optionalAuth } from '../middlewares/auth.middleware.js';
 import { verifyAdminOrTeacher, verifyAdmin } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
-// ===== PUBLIC ROUTES =====
-// Get solutions for a problem (public can view published solutions)
-router.get('/problem/:problemShortId', solutionController.getProblemSolutions);
+// ===== PUBLIC ROUTES (with optional auth) =====
+router.get('/problem/:problemShortId', optionalAuth, solutionController.getProblemSolutions);
+
+// ===== AUTHENTICATED ROUTES =====
+// Must be BEFORE /:id routes
 router.get('/check/:problemShortId', authenticateToken, verifyAdmin, solutionController.checkSolutionExists);
-// Get solution by ID (public can view published solutions)
-router.get('/:id', solutionController.getSolutionById);
+router.get('/votes/status', authenticateToken, solutionController.getUserVoteStatus);
+router.get('/admin/all', authenticateToken, verifyAdmin, solutionController.getAllSolutions);
 
-router.use(authenticateToken);
+// Get solution by ID (with optional auth)
+router.get('/:id', optionalAuth, solutionController.getSolutionById);
 
-// Create solution (authenticated users, but admins auto-publish)
-router.post('/', solutionController.createSolution);
+// Get comments for solution (with optional auth)
+router.get('/:id/comments', optionalAuth, solutionController.getSolutionComments);
 
-// Update own solution
-router.put('/:id', solutionController.updateSolution);
+// Protected routes
+router.post('/', authenticateToken, solutionController.createSolution);
+router.put('/:id', authenticateToken, solutionController.updateSolution);
+router.delete('/:id', authenticateToken, solutionController.deleteSolution);
 
-// Delete own solution
-router.delete('/:id', solutionController.deleteSolution);
+// Vote routes
+router.post('/:id/vote', authenticateToken, solutionController.voteSolution);
+router.delete('/:id/vote', authenticateToken, solutionController.removeVote);
 
-// Vote solution
-router.post('/:id/vote', solutionController.voteSolution);
-router.delete('/:id/vote', solutionController.removeVote);
-router.get('/votes/status', solutionController.getUserVoteStatus);
+// Comment routes
+router.post('/:id/comments', authenticateToken, solutionController.addComment);
+router.put('/:id/comments/:commentId', authenticateToken, solutionController.updateComment);
+router.delete('/:id/comments/:commentId', authenticateToken, solutionController.deleteComment);
+router.post('/:id/comments/:commentId/vote', authenticateToken, solutionController.voteComment);
+router.post('/:id/comments/:commentId/replies', authenticateToken, solutionController.addReply);
 
-// Comments
-router.post('/:id/comments', solutionController.addComment);
-router.put('/:id/comments/:commentId', solutionController.updateComment);
-router.delete('/:id/comments/:commentId', solutionController.deleteComment);
-router.post('/:id/comments/:commentId/vote', solutionController.voteComment);
-router.post('/:id/comments/:commentId/replies', solutionController.addReply);
+// Moderate
+router.patch('/:id/moderate', authenticateToken, verifyAdminOrTeacher, solutionController.moderateSolution);
 
-// ===== ADMIN ONLY =====
-//router.post('/:id/moderate', verifyAdminOrTeacher, solutionController.moderateSolution);
-router.get('/admin/all', verifyAdmin, solutionController.getAllSolutions);
 export default router;
