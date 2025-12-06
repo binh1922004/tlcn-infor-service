@@ -8,6 +8,8 @@ import {contestIsRunning, getRankingForContest, getUserParticipantStatus} from "
 import mongoose from "mongoose";
 import {createContestBroadcast, createContestAnnouncementNotification} from "../service/notification.service.js";
 import {broadcastNewContest, sendMessageToContestRoom} from "../socket/socket.js";
+import SubmissionModel from "../models/submission.model.js";
+import {Status} from "../utils/statusType.js";
 const SALT_ROUNDS = 10
 
 export const create = async  (req, res, next) => {
@@ -15,10 +17,12 @@ export const create = async  (req, res, next) => {
         const user = req.user;
         let contest = req.body
         contest.createdBy = user._id;
-        contest.isPrivate = true;
         contest.isActive = false;
-        if (contest.password){
+        if (contest.isPrivate && contest.password){
             contest.password = bcrypt.hashSync(contest.password, SALT_ROUNDS);
+        }
+        else{
+            contest.password = null;
         }
         const now = new Date();
         if (new Date(contest.startTime) < now){
@@ -217,6 +221,12 @@ export const updateContest = async (req, res, next) => {
     try {
         const contestId = req.params.id;
         const contestUpdates = req.body;
+        if (contestUpdates.isPrivate && contestUpdates.password){
+            contestUpdates.password = bcrypt.hashSync(contestUpdates.password, SALT_ROUNDS);
+        }
+        else{
+            contestUpdates.password = null;
+        }
         const contest = await contestModel.findById(contestId);
         if (contest == null) {
             return response.sendError(res, "Contest not found", 404);
@@ -479,6 +489,32 @@ export const createContestAnnouncement = async (req, res, next) => {
         });
         
         return response.sendSuccess(res, notification);
+    }
+    catch (error) {
+        console.log(error)
+        return response.sendError(res, error);
+    }
+}
+
+export const getContestStatistics = async (req, res, next) => {
+    try {
+        const totalContests = await contestModel.countDocuments();
+        const onGoingContests = await contestModel.countDocuments({
+            startTime: { $lte: new Date() },
+            endTime: { $gte: new Date() }
+        });
+        const upcomingContests = await contestModel.countDocuments({
+            startTime: { $gt: new Date() }
+        });
+        const pastContests = await contestModel.countDocuments({
+            endTime: { $lt: new Date() }
+        });
+        return response.sendSuccess(res, {
+            totalContests,
+            onGoingContests,
+            upcomingContests,
+            pastContests
+        });
     }
     catch (error) {
         console.log(error)

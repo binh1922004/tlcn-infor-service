@@ -1,5 +1,6 @@
 import contestParticipantModel from "../models/contestParticipant.model.js";
 import {mapToContestParticipantDto} from "../helpers/dto.helpers.js";
+import contestModel from "../models/contest.model.js";
 
 export const contestIsRunning = (contest) => {
     const now = new Date();
@@ -40,7 +41,7 @@ export const getLatestContestParticipant = async (contestId, userId) => {
 }
 
 
-export const updateContestParticipantProblemScore = async (contestParticipantId, problemId, submissionId, score) => {
+export const updateContestParticipantProblemScore = async (contestParticipantId, problemId, submissionId, score, isAc) => {
     try {
         const contestParticipant = await contestParticipantModel.findById(contestParticipantId);
         if (!contestParticipant){
@@ -48,6 +49,7 @@ export const updateContestParticipantProblemScore = async (contestParticipantId,
         }
 
         let problemScoreEntry = contestParticipant.problemScores.find(ps => ps.problemId.toString() === problemId.toString());
+        let isBestScore = true;
         if (!problemScoreEntry){
             problemScoreEntry = {
                 problemId: problemId,
@@ -68,8 +70,19 @@ export const updateContestParticipantProblemScore = async (contestParticipantId,
                 problemScoreEntry.bestSubmissionId = submissionId;
                 contestParticipant.lastBestSubmissionScoreAt = new Date();
             }
+            else{
+                isBestScore = false;
+            }
         }
         await contestParticipant.save();
+
+        if (isBestScore && isAc){
+            // Recalculate total score
+            console.log('Updating total score for contest participant:', contestParticipantId);
+            await contestModel.updateOne({_id: contestParticipant.contestId, "problems.problemId": problemId},
+                {$inc: {"problems.$.noOfSolved": 1}})
+        }
+
         return contestParticipant;
     }
     catch (error) {

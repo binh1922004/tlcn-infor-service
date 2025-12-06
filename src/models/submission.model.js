@@ -3,7 +3,7 @@ import {Status} from "../utils/statusType.js";
 import { customAlphabet } from 'nanoid';
 const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
 
-const problemSchema = new mongoose.Schema({
+const submissionSchema = new mongoose.Schema({
     problem: {type: mongoose.Schema.Types.ObjectId, ref: 'Problem', required: true},
     user: {type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true},
     source: {type: String, required: true},
@@ -48,14 +48,38 @@ const problemSchema = new mongoose.Schema({
     timestamps: true, //auto generate createAt and updateAt
     strict: true
 })
+submissionSchema.pre('save', function (next) {
+    this._isNew = this.isNew;
+    this._wasAC = ! this.isNew && this.isModified('status') && this. status === Status.AC;
+    next();
+});
 
-problemSchema.post('save', function (collection) {
-    const problemId = collection.problem;
-    mongoose.model('Problem').findByIdAndUpdate(problemId, { $inc: { numberOfSubmissions: 1 } }).exec();
-    if (collection.status === Status.AC) {
-        mongoose.model('Problem').findByIdAndUpdate(problemId, { $inc: { numberOfAccepted: 1 } }).exec();
+submissionSchema.post('save', async function (submission) {
+    const Problem = mongoose.model('Problem');
+    const updates = {};
+
+    // Nếu là submission mới
+    if (submission._isNew) {
+        updates.numberOfSubmissions = 1;
+
+        // Nếu submission mới này là AC luôn
+        if (submission.status === Status.AC) {
+            updates. numberOfAccepted = 1;
+        }
+    }
+    // Nếu status thay đổi thành AC
+    else if (submission._wasAC) {
+        updates.numberOfAccepted = 1;
+    }
+
+    // Chỉ update nếu có thay đổi
+    if (Object.keys(updates).length > 0) {
+        await Problem.findByIdAndUpdate(
+            submission.problem,
+            { $inc: updates }
+        );
     }
 })
-problemSchema.index({ user: 1, classroom: 1 });
+submissionSchema.index({ user: 1, classroom: 1 });
 
-export default mongoose.model('Submission', problemSchema);
+export default mongoose.model('Submission', submissionSchema);

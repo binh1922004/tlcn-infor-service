@@ -83,7 +83,13 @@ export const updateSubmissionStatus = async (submissionId, data) => {
             if (problemInContest){
                 const score = submission.passed / submission.problem.numberOfTestCases * problemInContest.point;
                 submission.score = score;
-                await updateContestParticipantProblemScore(submission.contestParticipant, submission.problem._id, submissionId, score);
+                await updateContestParticipantProblemScore(
+                    submission.contestParticipant,
+                    submission.problem._id,
+                    submissionId,
+                    score,
+                    submission.status === Status.AC
+                );
             }
             else{
                 return new Error("Problem not found in contest");
