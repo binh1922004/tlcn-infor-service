@@ -37,6 +37,8 @@ export const mapToContestDto = (contest) => {
         code: contest.code,
         isRegistered: contest.isRegistered,
         noOfSolved: contest.noOfSolved,
+        noOfParticipants: contest.noOfParticipants,
+        duration: contest.duration,
     }
 }
 
