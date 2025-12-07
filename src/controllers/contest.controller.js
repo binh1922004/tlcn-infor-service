@@ -159,15 +159,49 @@ export const addProblemsToContest = async (req, res, next) => {
 }
 export const getAllPublicContests = async (req, res, next) => {
     try {
-        const {page, size} = req.query;
+        const {page, size, status, type} = req.query;
         const pageNumber = parseInt(page) || 1;
         const pageSize = parseInt(size) || 20;
         const skip = (pageNumber - 1) * pageSize;
         const userId = req.user?._id;
         console.log('userId: ', userId);
+        const match = {};
+        match.isActive = true;
+
+        const now = new Date();
+        console.log('Status: ', status);
+        if (status) {
+            const arr = status.split(',');
+            const or = [];
+
+            if (arr.includes('upcoming')) {
+                or.push({ startTime: { $gt: now } });
+            }
+
+            if (arr.includes('ongoing')) {
+                or.push({
+                    startTime: { $lte: now },
+                    endTime: { $gte: now }
+                });
+            }
+
+            if (arr.includes('ended')) {
+                or.push({ endTime: { $lt: now } });
+            }
+
+            match.$or = or;
+        }
+        if (type) {
+            if (type === 'public') {
+                match.isPrivate = false;
+            }
+            else if (type === 'private') {
+                match.isPrivate = true;
+            }
+        }
         const contests = await contestModel.aggregate([
             {
-                $match: { isActive: true }  // ✅ ĐÚNG: Filter trước
+                $match: match
             },
             {
                 $sort: { createdAt: -1 }
@@ -362,9 +396,6 @@ export const getContestByCode = async (req, res, next) => {
         if (!contest) {
             return response.sendError(res, 'Contest not found', 404);
         }
-        if (contest.isPrivate && req.user?.role !== 'admin') {
-            return response.sendError(res, 'Access denied. This contest is private.', 403);
-        }
 
         let data = mapToContestDto(contest.toObject());
         data.userParticipation = await getUserParticipantStatus(contest, req.user?._id);
@@ -515,6 +546,20 @@ export const getContestStatistics = async (req, res, next) => {
             upcomingContests,
             pastContests
         });
+    }
+    catch (error) {
+        console.log(error)
+        return response.sendError(res, error);
+    }
+}
+
+export const getUpcomingContests = async (req, res, next) => {
+    try {
+        const now = new Date();
+        const contests = await contestModel.find({startTime: {$gt: now}, isActive: true})
+            .sort({startTime: 1})
+            .limit(2);
+        return response.sendSuccess(res, contests.map(m => mapToContestDto(m)));
     }
     catch (error) {
         console.log(error)
