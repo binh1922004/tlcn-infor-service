@@ -132,6 +132,49 @@ export const getSubmissionsByUserId = async (req, res) => {
   }
 };
 
+export const getBestSubmissionByUserId = async (req, res) => {
+  try {
+    const userId = req.params.id; 
+    const { problemId, classroomId, excludeClassroom } = req.query;
+
+    console.log('📥 Getting best submission:', { userId, problemId, classroomId, excludeClassroom });
+
+    // Validate required params
+    if (!problemId) {
+      return response.sendError(res, "Problem ID is required", 400);
+    }
+
+    const filter = {
+      user: userId,
+      problem: problemId,
+      status: Status.AC,
+    };
+
+    // Apply classroom filter
+    if (classroomId) {
+      filter.classroom = classroomId;
+    } else if (excludeClassroom === 'true') {
+      filter.classroom = null;
+    }
+
+    // Find best submission (lowest time, then lowest memory)
+    const bestSubmission = await SubmissionModel.findOne(filter)
+      .sort({ time: 1, memory: 1, createdAt: -1 }) // Sort by time ASC, memory ASC, newest first
+      .populate("user", "userName fullName avatar")
+      .populate("problem", "name shortId");
+
+    if (!bestSubmission) {
+      return response.sendError(res, "No accepted submission found", 404);
+    }
+
+    console.log('✅ Best submission found:', bestSubmission.shortId);
+    return response.sendSuccess(res, bestSubmission);
+  } catch (error) {
+    console.error('❌ Get best submission error:', error);
+    return response.sendError(res, error);
+  }
+};
+
 export const getSubmission = async (req, res) => {
   try {
     const { userId, problemId, contestId, status } = req.query;

@@ -390,11 +390,18 @@ export const updateClassroom = async (req, res, next) => {
  */
 export const deleteClassroom = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    await classroomModel.findByIdAndDelete(id);
+    const classroom = req.classroom; 
+    if (!classroom) {
+      return response.sendError(res, 'Không tìm thấy lớp học', 404);
+    }
+    const deletedClassroom = await classroomModel.findByIdAndDelete(classroom._id);
+
+    if (!deletedClassroom) {
+      return response.sendError(res, 'Không thể xóa lớp học', 500);
+    }
     return response.sendSuccess(res, null, 'Xóa lớp học thành công');
   } catch (error) {
-    console.error('Error deleting classroom:', error);
+    console.error('❌ Error deleting classroom:', error);
     return response.sendError(res, 'Internal server error', 500);
   }
 };
@@ -1339,37 +1346,333 @@ export const getClassroomProblemsWithProgress = async (req, res) => {
 };
 
 /**
- * Get leaderboard
+ * Get detailed leaderboard with scores
  * Route: GET /api/classroom/class/:classCode/leaderboard
  */
 export const getLeaderboard = async (req, res) => {
   try {
     const classroom = req.classroom;
+    const { sortBy = 'totalScore' } = req.query; // totalScore, problemsSolved, averageScore
+
     await classroom.populate('students.userId', 'userName fullName avatar');
 
-    // TODO: Implement leaderboard logic with actual submission scores
-    const leaderboard = classroom.students
-      .filter(s => s.status === 'active')
-      .map((student, index) => ({
-        rank: index + 1,
+    // Get all student progress
+    const leaderboardData = await Promise.all(
+      classroom.students
+        .filter(s => s.status === 'active')
+        .map(async (student) => {
+          const userId = student.userId._id;
+          const userProgress = classroom.studentProgress.filter(
+            p => p.userId.toString() === userId.toString()
+          );
+
+          // Calculate stats
+          const completedProblems = userProgress.filter(p => p.status === 'completed').length;
+          const attemptedProblems = userProgress.filter(p => p.status === 'attempted').length;
+          
+          const totalScore = userProgress
+            .filter(p => p.status === 'completed')
+            .reduce((sum, p) => sum + p.bestScore, 0);
+
+          const averageScore = completedProblems > 0 
+            ? Math.round(totalScore / completedProblems) 
+            : 0;
+
+          const completionRate = classroom.problems.length > 0
+            ? Math.round((completedProblems / classroom.problems.length) * 100)
+            : 0;
+
+          // Get recent activity
+          const lastSubmission = userProgress
+            .filter(p => p.lastSubmissionAt)
+            .sort((a, b) => b.lastSubmissionAt - a.lastSubmissionAt)[0]?.lastSubmissionAt || null;
+
+          return {
+            student: {
+              _id: student.userId._id,
+              userName: student.userId.userName,
+              fullName: student.userId.fullName,
+              avatar: student.userId.avatar
+            },
+            totalScore,
+            problemsSolved: completedProblems,
+            problemsAttempted: attemptedProblems,
+            averageScore,
+            completionRate,
+            joinedAt: student.joinedAt,
+            lastSubmission,
+            // Progress details for each problem
+            problemProgress: userProgress.map(p => ({
+              problemShortId: p.problemShortId,
+              status: p.status,
+              score: p.bestScore,
+              completedAt: p.completedAt
+            }))
+          };
+        })
+    );
+
+    // Sort leaderboard
+    let sortedLeaderboard;
+    switch (sortBy) {
+      case 'problemsSolved':
+        sortedLeaderboard = leaderboardData.sort((a, b) => {
+          if (b.problemsSolved === a.problemsSolved) {
+            return b.totalScore - a.totalScore;
+          }
+          return b.problemsSolved - a.problemsSolved;
+        });
+        break;
+      case 'averageScore':
+        sortedLeaderboard = leaderboardData.sort((a, b) => {
+          if (b.averageScore === a.averageScore) {
+            return b.problemsSolved - a.problemsSolved;
+          }
+          return b.averageScore - a.averageScore;
+        });
+        break;
+      case 'completionRate':
+        sortedLeaderboard = leaderboardData.sort((a, b) => {
+          if (b.completionRate === a.completionRate) {
+            return b.totalScore - a.totalScore;
+          }
+          return b.completionRate - a.completionRate;
+        });
+        break;
+      default: // totalScore
+        sortedLeaderboard = leaderboardData.sort((a, b) => {
+          if (b.totalScore === a.totalScore) {
+            return b.problemsSolved - a.problemsSolved;
+          }
+          return b.totalScore - a.totalScore;
+        });
+    }
+
+    // Add rank
+    const leaderboardWithRank = sortedLeaderboard.map((item, index) => ({
+      rank: index + 1,
+      ...item
+    }));
+
+    return response.sendSuccess(res, { 
+      items: leaderboardWithRank,
+      total: leaderboardWithRank.length,
+      classCode: classroom.classCode,
+      className: classroom.className,
+      totalProblems: classroom.problems.length,
+      sortBy
+    });
+  } catch (error) {
+    console.error('❌ Error getting leaderboard:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+
+/**
+ * Get grade book (bảng điểm chi tiết)
+ * Route: GET /api/classroom/class/:classCode/gradebook
+ */
+export const getGradeBook = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+    const { studentId } = req.query;
+
+    await classroom.populate('students.userId', 'userName fullName avatar email');
+
+    // Get problem details
+    const problemShortIds = classroom.problems.map(p => p.problemShortId);
+    const problems = await problemModel.find({ 
+      shortId: { $in: problemShortIds } 
+    }).select('name shortId difficulty');
+
+    // Build grade book
+    let students = classroom.students.filter(s => s.status === 'active');
+    
+    if (studentId) {
+      students = students.filter(s => s.userId._id.toString() === studentId);
+    }
+
+    const gradeBook = students.map(student => {
+      const userId = student.userId._id;
+      const userProgress = classroom.studentProgress.filter(
+        p => p.userId.toString() === userId.toString()
+      );
+
+      // Build problem scores
+      const problemScores = classroom.problems.map(cp => {
+        const problem = problems.find(p => p.shortId === cp.problemShortId);
+        const progress = userProgress.find(p => p.problemShortId === cp.problemShortId);
+
+        return {
+          problemShortId: cp.problemShortId,
+          problemName: problem?.name || 'Unknown',
+          difficulty: problem?.difficulty || 'medium',
+          maxScore: cp.maxScore,
+          isRequired: cp.isRequired,
+          dueDate: cp.dueDate,
+          score: progress?.bestScore || 0,
+          status: progress?.status || 'not_attempted',
+          completedAt: progress?.completedAt || null,
+          percentage: cp.maxScore > 0 
+            ? Math.round((progress?.bestScore || 0) / cp.maxScore * 100)
+            : 0
+        };
+      });
+
+      // Calculate totals
+      const completedProblems = problemScores.filter(p => p.status === 'completed').length;
+      const totalScore = problemScores.reduce((sum, p) => sum + p.score, 0);
+      const maxPossibleScore = problemScores.reduce((sum, p) => sum + p.maxScore, 0);
+      const averagePercentage = maxPossibleScore > 0
+        ? Math.round((totalScore / maxPossibleScore) * 100)
+        : 0;
+
+      return {
         student: {
           _id: student.userId._id,
           userName: student.userId.userName,
           fullName: student.userId.fullName,
-          avatar: student.userId.avatar
+          avatar: student.userId.avatar,
+          email: student.userId.email
         },
-        totalScore: 0,
-        problemsSolved: 0,
-        joinedAt: student.joinedAt
-      }));
+        joinedAt: student.joinedAt,
+        problemScores,
+        summary: {
+          totalProblems: classroom.problems.length,
+          completedProblems,
+          attemptedProblems: problemScores.filter(p => p.status === 'attempted').length,
+          notAttemptedProblems: problemScores.filter(p => p.status === 'not_attempted').length,
+          totalScore,
+          maxPossibleScore,
+          averagePercentage,
+          completionRate: Math.round((completedProblems / classroom.problems.length) * 100)
+        }
+      };
+    });
 
-    return response.sendSuccess(res, { 
-      items: leaderboard,
-      classCode: classroom.classCode,
-      className: classroom.className
+    return response.sendSuccess(res, {
+      gradeBook,
+      classroom: {
+        _id: classroom._id,
+        classCode: classroom.classCode,
+        className: classroom.className
+      },
+      problems: classroom.problems.map(cp => {
+        const problem = problems.find(p => p.shortId === cp.problemShortId);
+        return {
+          shortId: cp.problemShortId,
+          name: problem?.name || 'Unknown',
+          difficulty: problem?.difficulty,
+          maxScore: cp.maxScore,
+          isRequired: cp.isRequired,
+          dueDate: cp.dueDate,
+          order: cp.order
+        };
+      }),
+      statistics: {
+        totalStudents: gradeBook.length,
+        totalProblems: classroom.problems.length,
+        averageCompletionRate: gradeBook.length > 0
+          ? Math.round(
+              gradeBook.reduce((sum, g) => sum + g.summary.completionRate, 0) / gradeBook.length
+            )
+          : 0,
+        averageScore: gradeBook.length > 0
+          ? Math.round(
+              gradeBook.reduce((sum, g) => sum + g.summary.totalScore, 0) / gradeBook.length
+            )
+          : 0
+      }
     });
   } catch (error) {
-    console.error(' Error getting leaderboard:', error);
+    console.error('❌ Error getting grade book:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+
+/**
+ * Export grade book to Excel
+ * Route: GET /api/classroom/class/:classCode/gradebook/export
+ */
+export const exportGradeBook = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+
+    await classroom.populate('students.userId', 'userName fullName email');
+
+    const problemShortIds = classroom.problems.map(p => p.problemShortId);
+    const problems = await problemModel.find({ 
+      shortId: { $in: problemShortIds } 
+    }).select('name shortId');
+
+    // Prepare data for Excel
+    const headers = [
+      'STT',
+      'Họ và tên',
+      'Email',
+      'Username',
+      ...classroom.problems.map(cp => {
+        const problem = problems.find(p => p.shortId === cp.problemShortId);
+        return problem?.name || cp.problemShortId;
+      }),
+      'Tổng điểm',
+      'Hoàn thành',
+      'Tỷ lệ (%)'
+    ];
+
+    const rows = classroom.students
+      .filter(s => s.status === 'active')
+      .map((student, index) => {
+        const userId = student.userId._id;
+        const userProgress = classroom.studentProgress.filter(
+          p => p.userId.toString() === userId.toString()
+        );
+
+        const problemScores = classroom.problems.map(cp => {
+          const progress = userProgress.find(p => p.problemShortId === cp.problemShortId);
+          return progress?.bestScore || 0;
+        });
+
+        const totalScore = problemScores.reduce((sum, score) => sum + score, 0);
+        const completedCount = userProgress.filter(p => p.status === 'completed').length;
+        const completionRate = Math.round((completedCount / classroom.problems.length) * 100);
+
+        return [
+          index + 1,
+          student.userId.fullName || student.userId.userName,
+          student.userId.email,
+          student.userId.userName,
+          ...problemScores,
+          totalScore,
+          completedCount,
+          completionRate
+        ];
+      });
+
+    // Create workbook
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+    // Auto-size columns
+    const maxWidth = headers.map((h, i) => {
+      const columnValues = [h, ...rows.map(r => String(r[i] || ''))];
+      return Math.max(...columnValues.map(v => v.length)) + 2;
+    });
+
+    worksheet['!cols'] = maxWidth.map(w => ({ wch: Math.min(w, 50) }));
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Bảng điểm');
+
+    // Generate buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set response headers
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="BangDiem_${classroom.classCode}_${Date.now()}.xlsx"`);
+
+    return res.send(buffer);
+  } catch (error) {
+    console.error('❌ Error exporting grade book:', error);
     return response.sendError(res, 'Internal server error', 500);
   }
 };
@@ -1688,6 +1991,8 @@ export default {
   getLeaderboard,
   getClassroomProblemsWithProgress,
   getStudentProgress,
-  getRecentActivities
+  getRecentActivities,
+  getGradeBook,
+  exportGradeBook
   
 };

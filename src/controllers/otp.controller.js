@@ -64,56 +64,130 @@ export const verifyOtpRegister = async(req, res) =>{
 }
 
 // Gửi OTP cho Forgot Password
-export const sendOtpForgotPass = async (req, res) => {
+export const forgotPasswordSendOtp = async (req, res) => {
   try {
-    const { email, userName } = req.body;
-    if (!email) return res.status(400).json({ message: "Email is required" });
-    if (!userName) return res.status(400).json({ message: "Username is required" });
+    const { userName } = req.body;
 
-    // Kiểm tra user tồn tại với cả email và username
-    const user = await User.findOne({ email, userName });
+    if (!userName) {
+      return res.status(400).json({ message: "Username là bắt buộc" });
+    }
+
+    // Tìm user theo userName
+    const user = await User.findOne({ userName });
     if (!user) {
       return res.status(404).json({ 
-        message: "Email hoặc username không đúng. Vui lòng kiểm tra lại thông tin." 
+        message: "Không tìm thấy tài khoản với username này" 
+      });
+    }
+
+    // Kiểm tra nếu là tài khoản Google
+    if (user.isGoogle) {
+      return res.status(400).json({ 
+        message: "Tài khoản Google không hỗ trợ đổi mật khẩu" 
       });
     }
 
     // Tạo OTP 6 chữ số
     const otp = crypto.randomInt(100000, 999999).toString();
 
-    // Lưu OTP vào Redis với TTL 120s (chỉ cho forgot password)
-    await redisClient.setEx(`otp:forgot:${email}`, 120, otp);
+    // Lưu OTP vào Redis với TTL 300s (5 phút)
+    await redisClient.setEx(`otp:forgot:${userName}`, 300, otp);
 
     // Gửi OTP qua email
-    await sendMail(email, "Mã OTP quên mật khẩu", `Mã OTP quên mật khẩu của bạn: ${otp}`);
+    await sendMail(
+      user.email,
+      "Mã OTP đặt lại mật khẩu",
+      `Mã OTP để đặt lại mật khẩu của bạn là: ${otp}. Mã này có hiệu lực trong 5 phút.`
+    );
 
-    res.status(200).json({ message: "OTP đã gửi về email" });
+    res.status(200).json({ 
+      message: "Mã OTP đã được gửi đến email của bạn",
+      email: user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3') // Ẩn bớt email
+    });
+
   } catch (err) {
-    console.error(err);
+    console.error("Send OTP error:", err);
     res.status(500).json({ message: "Gửi OTP thất bại" });
   }
 };
 
 // Xác thực OTP cho Forgot Password
-export const verifyOtpForgot = async (req, res) => {
+export const forgotPasswordVerifyOtp = async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { userName, otp } = req.body;
 
-    const savedOtp = await redisClient.get(`otp:forgot:${email}`);
-    if (!savedOtp) return res.status(400).json({ message: "OTP hết hạn hoặc không tồn tại" });
+    if (!userName || !otp) {
+      return res.status(400).json({ 
+        message: "Username và OTP là bắt buộc" 
+      });
+    }
 
-    if (savedOtp !== otp) return res.status(400).json({ message: "OTP không đúng" });
+    // Kiểm tra OTP từ Redis
+    const savedOtp = await redisClient.get(`otp:forgot:${userName}`);
+    if (!savedOtp) {
+      return res.status(400).json({ 
+        message: "Mã OTP đã hết hạn hoặc không tồn tại" 
+      });
+    }
 
-    // Xóa OTP sau khi verify
-    await redisClient.del(`otp:forgot:${email}`);
-    
-    // Lưu trạng thái đã verify (có thời hạn 10 phút)
-    await redisClient.setEx(`verified:forgot:${email}`, 600, "true");
+    if (savedOtp !== otp) {
+      return res.status(400).json({ 
+        message: "Mã OTP không chính xác" 
+      });
+    }
 
-    res.status(200).json({ message: "Xác thực OTP thành công" });
+    // Xóa OTP cũ và lưu trạng thái đã verify (10 phút)
+    await redisClient.del(`otp:forgot:${userName}`);
+    await redisClient.setEx(`verified:forgot:${userName}`, 600, "true");
+
+    res.status(200).json({ 
+      message: "Xác thực OTP thành công. Bạn có thể đặt lại mật khẩu mới." 
+    });
+
   } catch (err) {
-    console.error(err);
+    console.error("Verify OTP error:", err);
     res.status(500).json({ message: "Xác thực OTP thất bại" });
   }
 };
 
+// Resend OTP 
+export const resendForgotPasswordOtp = async (req, res) => {
+  try {
+    const { userName } = req.body;
+
+    if (!userName) {
+      return res.status(400).json({ message: "Username là bắt buộc" });
+    }
+
+    const user = await User.findOne({ userName });
+    if (!user) {
+      return res.status(404).json({ 
+        message: "Không tìm thấy tài khoản" 
+      });
+    }
+
+    if (user.isGoogle) {
+      return res.status(400).json({ 
+        message: "Tài khoản Google không hỗ trợ đổi mật khẩu" 
+      });
+    }
+
+    // Tạo OTP mới
+    const otp = crypto.randomInt(100000, 999999).toString();
+    await redisClient.setEx(`otp:forgot:${userName}`, 300, otp);
+
+    await sendMail(
+      user.email,
+      "Mã OTP đặt lại mật khẩu",
+      `Mã OTP để đặt lại mật khẩu của bạn là: ${otp}. Mã này có hiệu lực trong 5 phút.`
+    );
+
+    res.status(200).json({ 
+      message: "Mã OTP mới đã được gửi đến email của bạn" 
+    });
+
+  } catch (err) {
+    console.error("Resend OTP error:", err);
+    res.status(500).json({ message: "Gửi lại OTP thất bại" });
+  }
+};
