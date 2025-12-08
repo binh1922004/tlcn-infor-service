@@ -93,6 +93,67 @@ export const createSolution = async (req, res) => {
   }
 };
 /**
+ * Resubmit rejected solution for review
+ */
+export const resubmitSolution = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+    const { title, content, codeBlocks, complexity, approach, tags, resubmitMessage } = req.body;
+
+    const solution = await solutionModel.findById(id);
+    if (!solution) {
+      return response.sendError(res, 'Không tìm thấy solution', 404);
+    }
+
+    // CHỈ AUTHOR mới được resubmit
+    if (solution.author.toString() !== userId.toString()) {
+      return response.sendError(res, 'Chỉ tác giả mới có quyền gửi lại solution', 403);
+    }
+
+    // Check if solution is rejected
+    if (solution.status !== 'rejected') {
+      return response.sendError(res, 'Chỉ có thể resubmit solution đã bị reject', 400);
+    }
+
+    // Update solution content
+    if (title) solution.title = title;
+    if (content) solution.content = content;
+    if (codeBlocks) solution.codeBlocks = codeBlocks;
+    if (complexity) solution.complexity = complexity;
+    if (approach) solution.approach = approach;
+    if (tags) solution.tags = tags;
+
+    // Update status to pending review
+    solution.status = 'pending_review';
+    solution.rejectionReason = null;
+    solution.isEdited = true;
+    solution.lastEditedAt = new Date();
+    
+    // Track resubmission
+    solution.resubmitCount = (solution.resubmitCount || 0) + 1;
+    solution.lastResubmitAt = new Date();
+    solution.resubmitMessage = resubmitMessage || '';
+
+    // Add to edit history
+    solution.editHistory.push({
+      editedBy: userId,
+      editedAt: new Date(),
+      changes: 'Resubmitted after rejection',
+      resubmitMessage: resubmitMessage || ''
+    });
+
+    await solution.save();
+    await solution.populate('author', 'userName fullName avatar');
+
+    return response.sendSuccess(res, solution, 'Gửi lại solution thành công. Đang chờ admin duyệt.');
+  } catch (error) {
+    console.error('❌ Resubmit solution error:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+
+/**
  * Get all solutions (Admin only)
  */
 export const getAllSolutions = async (req, res) => {
@@ -160,12 +221,23 @@ export const getProblemSolutions = async (req, res) => {
     const { sortBy = 'popular', page = 1, limit = 10, classroomId, excludeClassroom, contestParticipant } = req.query;
 
     const skip = (page - 1) * limit;
+    const userId = req.user?._id;
 
     // Build query
     const query = {
-      problemShortId,
-      status: 'published'
+      problemShortId
     };
+
+    // If user is logged in, show their own solutions regardless of status
+    // Otherwise, only show published solutions
+    if (userId) {
+      query.$or = [
+        { status: 'published' },
+        { author: userId } // Show user's own solutions (all statuses)
+      ];
+    } else {
+      query.status = 'published';
+    }
 
     // Filter by classroom
     if (classroomId) {
@@ -188,7 +260,7 @@ export const getProblemSolutions = async (req, res) => {
       case 'popular':
         sort = { voteScore: -1, viewCount: -1 };
         break;
-      case 'newest':
+      case 'recent':
         sort = { createdAt: -1 };
         break;
       case 'oldest':
@@ -213,7 +285,6 @@ export const getProblemSolutions = async (req, res) => {
     ]);
 
     // Add vote status for current user if logged in
-    const userId = req.user?._id;
     if (userId) {
       const userIdStr = userId.toString();
       solutions.forEach(solution => {
@@ -242,6 +313,9 @@ export const getProblemSolutions = async (req, res) => {
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+
+
+
 /**
  * Get solution by ID
  */
@@ -348,7 +422,6 @@ export const updateSolution = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user._id;
-    const userRole = req.user.role;
     const { title, content, codeBlocks, complexity, approach, tags } = req.body;
 
     const solution = await solutionModel.findById(id);
@@ -356,9 +429,9 @@ export const updateSolution = async (req, res) => {
       return response.sendError(res, 'Không tìm thấy solution', 404);
     }
 
-    // Check permission
-    if (solution.author.toString() !== userId.toString() && userRole !== 'admin') {
-      return response.sendError(res, 'Không có quyền chỉnh sửa', 403);
+    // CHỈ AUTHOR mới được chỉnh sửa (bỏ check admin)
+    if (solution.author.toString() !== userId.toString()) {
+      return response.sendError(res, 'Chỉ tác giả mới có quyền chỉnh sửa solution', 403);
     }
 
     // Update fields
@@ -401,9 +474,9 @@ export const deleteSolution = async (req, res) => {
       return response.sendError(res, 'Không tìm thấy solution', 404);
     }
 
-    // Check permission
+    // Admin hoặc tác giả mới được xóa
     if (solution.author.toString() !== userId.toString() && userRole !== 'admin') {
-      return response.sendError(res, 'Không có quyền xóa', 403);
+      return response.sendError(res, 'Không có quyền xóa solution này', 403);
     }
 
     await solutionModel.findByIdAndDelete(id);
@@ -840,5 +913,6 @@ export default {
   getAllSolutions,
   checkSolutionExists,
   getUserVoteStatus,
-  removeVote
+  removeVote,
+  resubmitSolution
 };

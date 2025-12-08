@@ -24,7 +24,7 @@ router.get('/:id/comments', optionalAuth, solutionController.getSolutionComments
 router.post('/', authenticateToken, solutionController.createSolution);
 router.put('/:id', authenticateToken, solutionController.updateSolution);
 router.delete('/:id', authenticateToken, solutionController.deleteSolution);
-
+router.put('/:id/resubmit', authenticateToken, solutionController.resubmitSolution);
 // Vote routes
 router.post('/:id/vote', authenticateToken, solutionController.voteSolution);
 router.delete('/:id/vote', authenticateToken, solutionController.removeVote);

@@ -232,6 +232,17 @@ const solutionSchema = new mongoose.Schema({
     enum: ['practice', 'contest', 'classroom'],
     default: 'practice'
   },
+  resubmitCount: {
+    type: Number,
+    default: 0
+  },
+  lastResubmitAt: {
+    type: Date
+  },
+  resubmitMessage: {
+    type: String,
+    default: ''
+  }
 }, {
   timestamps: true,
   strict: true
