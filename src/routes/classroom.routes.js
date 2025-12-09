@@ -31,7 +31,9 @@ import {
   getStudentProgress,
   getRecentActivities,
   getGradeBook,
-  exportGradeBook
+  exportGradeBook,
+  getSubmissionDetail,
+  updateProblemInClassroom
   
   
 } from '../controllers/classroom.controller.js';
@@ -93,6 +95,11 @@ router.post('/class/:classCode/leave', loadClassroom, leaveClassroom);
 // Problems routes with classCode
 router.get('/class/:classCode/problems', verifyClassroomAccess, getClassroomProblems);
 router.post('/class/:classCode/problems', verifyClassroomTeacher, checkClassroomActive, addProblemToClassroom);
+router.patch('/class/:classCode/problems/:problemShortId',
+verifyClassroomTeacher,
+  checkClassroomActive,
+  updateProblemInClassroom
+);
 router.delete('/class/:classCode/problems/:problemShortId', 
   verifyClassroomTeacher, 
   checkClassroomActive, 
@@ -119,6 +126,12 @@ router.get('/class/:classCode/students/:studentId/submissions',
   verifyClassroomTeacher, 
   getStudentSubmissions
 );
+router.get(
+  '/class/:classCode/students/:studentId/submissions/:submissionId',
+  verifyClassroomTeacher,
+  getSubmissionDetail
+);
+
 // Upload Excel & Email with classCode
 router.post('/class/:classCode/upload-students-excel', verifyClassroomTeacher, checkClassroomActive, upload.single('file'), uploadStudentsExcel);
 router.post('/class/:classCode/invite-by-email', verifyClassroomTeacher, checkClassroomActive, inviteStudentsByEmail);
@@ -142,10 +155,9 @@ router.get('/:classCode/gradebook/export',
 );
 router.get('/class/:classCode/stats', verifyClassroomAccess, getStats);
 router.get('/class/:classCode/activities', verifyClassroomAccess, getRecentActivities);
-// ===== TEACHER/ADMIN ROUTES =====
+// TEACHER/ADMIN ROUTES 
 router.post('/', verifyAdminOrTeacher, createClassroom);
 
-// ===== OLD ROUTES WITH :id (FOR BACKWARD COMPATIBILITY) =====
 router.put('/:id', verifyClassroomOwner, updateClassroom);
 router.delete('/:id', verifyClassroomOwner, deleteClassroom);
 router.post('/:id/regenerate-invite', verifyClassroomOwner, regenerateInviteCode);
