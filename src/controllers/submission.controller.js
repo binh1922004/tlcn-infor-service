@@ -6,6 +6,8 @@ import mongoose from "mongoose";
 import contestParticipantModel from "../models/contestParticipant.model.js";
 import { getLatestContestParticipant } from "../service/contest.service.js";
 import problemModels from "../models/problem.models.js";
+import {populate} from "dotenv";
+import {Status} from "../utils/statusType.js";
 export const submitProblem = async (req, res) => {
   try {
     const id = req.user._id;
@@ -118,8 +120,9 @@ export const getSubmissionsByUserId = async (req, res) => {
     const submissions = await SubmissionModel.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
-
+      .limit(limit)
+      .populate("user", "userName")
+      .populate("problem", "name");
     const total = await SubmissionModel.countDocuments(filter);
     // sendMessageToUser(userId, 'submission-update', submissions)
     return response.sendSuccess(res, pageDTO(submissions, total, page, limit));
@@ -129,9 +132,52 @@ export const getSubmissionsByUserId = async (req, res) => {
   }
 };
 
+export const getBestSubmissionByUserId = async (req, res) => {
+  try {
+    const userId = req.params.id; 
+    const { problemId, classroomId, excludeClassroom } = req.query;
+
+    console.log('📥 Getting best submission:', { userId, problemId, classroomId, excludeClassroom });
+
+    // Validate required params
+    if (!problemId) {
+      return response.sendError(res, "Problem ID is required", 400);
+    }
+
+    const filter = {
+      user: userId,
+      problem: problemId,
+      status: Status.AC,
+    };
+
+    // Apply classroom filter
+    if (classroomId) {
+      filter.classroom = classroomId;
+    } else if (excludeClassroom === 'true') {
+      filter.classroom = null;
+    }
+
+    // Find best submission (lowest time, then lowest memory)
+    const bestSubmission = await SubmissionModel.findOne(filter)
+      .sort({ time: 1, memory: 1, createdAt: -1 }) // Sort by time ASC, memory ASC, newest first
+      .populate("user", "userName fullName avatar")
+      .populate("problem", "name shortId");
+
+    if (!bestSubmission) {
+      return response.sendError(res, "No accepted submission found", 404);
+    }
+
+    console.log('✅ Best submission found:', bestSubmission.shortId);
+    return response.sendSuccess(res, bestSubmission);
+  } catch (error) {
+    console.error('❌ Get best submission error:', error);
+    return response.sendError(res, error);
+  }
+};
+
 export const getSubmission = async (req, res) => {
   try {
-    const { userId, problemId } = req.query;
+    const { userId, problemId, contestId, status } = req.query;
     const { limit = 10, page = 1, language } = req.query;
     const skip = (page - 1) * limit;
 
@@ -149,13 +195,23 @@ export const getSubmission = async (req, res) => {
       filter.language = language;
     }
 
+    if (contestId){
+      filter.contest = contestId;
+    }
+
+    if (status){
+        filter.status = status;
+    }
+
     const submissions = await SubmissionModel.find(filter)
+        .populate("user", "userName")
+        .populate("problem", "name")
+        .populate('contest', 'name code')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
     const total = await SubmissionModel.countDocuments(filter);
-    console.log(total);
     return response.sendSuccess(res, pageDTO(submissions, total, page, limit));
   } catch (error) {
     console.log(error);
@@ -166,7 +222,19 @@ export const getSubmission = async (req, res) => {
 export const getSubmissionById = async (req, res) => {
   try {
     const id = req.params.id;
-    const submission = await SubmissionModel.findById(id);
+    const submission = await SubmissionModel.findById(id)
+        .populate("user", "userName")
+        .populate("problem", "name shortId")
+        .populate('contest', 'title code');
+    if (!submission) {
+        return response.sendError(res, "Submission not found", 404);
+    }
+    const user = req.user;
+    if (submission.isPrivate) {
+      if (!user || (user._id.toString() !== submission.user._id.toString() && user.role !== 'admin')) {
+        return response.sendError(res, "You are not allowed to view this submission", 403);
+      }
+    }
     return response.sendSuccess(res, submission);
   } catch (error) {
     console.log(error);
@@ -332,3 +400,23 @@ export const getSubmissionDifficultyChart = async (req, res) => {
     return response.sendError(res, error);
   }
 };
+
+
+export const getSubmissionStatistics = async (req, res) => {
+    try {
+        const totalSubmissions = await SubmissionModel.countDocuments();
+        const acSubmissions = await SubmissionModel.countDocuments({ status: Status.AC });
+        const waSubmission = await SubmissionModel.countDocuments({ status: Status.WA });
+        const otherSubmission = totalSubmissions - (acSubmissions + waSubmission);
+        return response.sendSuccess(res, {
+            totalSubmissions,
+            acSubmissions,
+            waSubmission,
+            otherSubmission,
+        });
+    }
+    catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}

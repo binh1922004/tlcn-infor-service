@@ -2,6 +2,8 @@ import sanitizeHtml from "sanitize-html";
 import Post from "../models/post.model.js";
 import response from "../helpers/response.js";
 import Comment from '../models/comment.model.js';
+import { createPostBroadcast } from '../service/notification.service.js';
+import { broadcastNewPost } from '../socket/socket.js';
 /* Helper to sanitize htmlContent before saving/returning */
 const sanitize = (html) => {
   if (!html) return html;
@@ -28,9 +30,11 @@ export const createPost = async (req, res) => {
       title,
       content,
       htmlContent,
+      codeSnippet, // ✅ Thêm codeSnippet
       images = [],
       hashtags = [],
     } = req.body;
+    
     if (!title || !content)
       return response.sendError(res, "Title and content are required", 400);
 
@@ -38,25 +42,42 @@ export const createPost = async (req, res) => {
       title: title.trim(),
       content: content.trim(),
       htmlContent: sanitize(htmlContent),
+      codeSnippet: codeSnippet || '', // ✅ Lưu codeSnippet
       author: req.user._id,
       images,
       hashtags,
     });
-    // Emit socket event nếu là admin
-    const io = req.app.get("io");
-    if (io && req.user?.role === "admin") {
-      io.emit("post:created", {
-        postId: post._id,
-        title: post.title,
-        author: { _id: req.user._id, userName: req.user.userName },
-        createdAt: post.createdAt,
-      });
+    
+    const populated = await post.populate("author", "userName fullName avatar");
+    
+    if (req.user?.role === "admin") {
+      try {
+        // Tạo broadcast notification
+        const broadcast = await createPostBroadcast(
+          post._id,
+          {
+            title: post.title,
+            content: post.content,
+            images: post.images,
+            hashtags: post.hashtags
+          },
+          {
+            _id: req.user._id,
+            userName: req.user.userName,
+            fullName: req.user.fullName,
+            avatar: req.user.avatar
+          }
+        );
+        
+        // Gửi realtime qua socket
+        broadcastNewPost(broadcast);
+        
+        console.log(`✅ Broadcast created and sent for post ${post._id}`);
+      } catch (notificationError) {
+        console.error('❌ Error sending post notification:', notificationError);
+      }
     }
-
-    const populated =
-      (await post
-        .populate("author", "userName fullName avatar")
-        .execPopulate?.()) || post;
+    
     return response.sendSuccess(res, populated, "Post created", 201);
   } catch (err) {
     console.error("createPost error", err);
@@ -157,10 +178,13 @@ export const updatePost = async (req, res) => {
   try {
     const postId = req.params.id;
     const updates = {};
+    
     if (req.body.title) updates.title = req.body.title.trim();
     if (req.body.content) updates.content = req.body.content.trim();
     if (req.body.htmlContent !== undefined)
       updates.htmlContent = sanitize(req.body.htmlContent);
+    if (req.body.codeSnippet !== undefined) // ✅ Thêm codeSnippet
+      updates.codeSnippet = req.body.codeSnippet;
     if (req.body.images) updates.images = req.body.images;
     if (req.body.hashtags) updates.hashtags = req.body.hashtags;
     if (typeof req.body.isPublished === "boolean")

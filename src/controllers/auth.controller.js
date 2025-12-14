@@ -38,6 +38,8 @@ export const createUser = async (req, res, next) => {
 	try {
 		const username = req.body.userName
 		const email = req.body.email;
+		const origin = req.headers.origin || req.headers.referer || '';
+    const isTeacherSite = origin.includes(config.fe_teacher_localhost_url);
 		const userCheck = await userModel.findByUsername(username)
 		if (userCheck){
 			return response.sendError(res, 'User is existed', 404)
@@ -51,7 +53,8 @@ export const createUser = async (req, res, next) => {
 			let newUser = req.body
 			newUser.password = hashPassword
 			newUser.active = false 
-			newUser.role = 'user'
+			newUser.role = isTeacherSite ? 'teacher' : 'user';
+			console.log(`✅ Creating user with role: ${newUser.role} (Origin: ${origin})`);
 
 			const createdUser = await userModel.create(newUser)
 			if (!createdUser){

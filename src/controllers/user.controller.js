@@ -18,10 +18,34 @@ export const getUsers = async (req, res, next) => {
     next(err);
   }
 };
+export const getProfileByUserName = async (req, res, next) => {
+  try {
+    const username = req.params.username;
+    console.log(username);
+    const user = await userModel.findByUsername(username);
+    if (!user) {
+      return response.sendError(res, "User is not existed", 404);
+    }
+
+    return response.sendSuccess(res, {
+      _id: user._id,
+      userName: user.userName,
+      fullName: user.fullName,
+      email: user.email,
+      avatar: user.avatar,
+      active: user.active,
+      role: user.role,
+      isOwner: req.user?.userName != null && user.userName === req.user?.userName,
+      dob: user.dob,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const getUserByUsername = async (req, res, next) => {
   try {
-    const username = req.params.username;
+    const username = req.params.userName;
     console.log(username);
     const user = await userModel.findByUsername(username);
     if (!user) {
@@ -298,3 +322,57 @@ export const updateUserStatus = async (req, res, next) => {
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+
+export const getMostSolvedUsers = async (req, res, next) => {
+    try {
+        const {page, size} = req.query;
+        const pageNumber = parseInt(page) || 1;
+        const pageSize = parseInt(size) || 10;
+        const skip = (pageNumber - 1) * pageSize;
+        const users = await userModel.aggregate([
+            {
+                $lookup: {
+                    from: 'submissions',
+                    localField: '_id',
+                    foreignField: 'user',
+                    as: 'submissions'
+                }
+            },
+            { $unwind: '$submissions' },
+            {
+                $match: {
+                    'submissions.status': 'Accepted'
+                }
+            },
+            {
+                $group: {
+                    _id: '$_id',                 // group theo user
+                    user: { $first: '$$ROOT' }, // giữ lại thông tin user
+                    acceptedCount: { $sum: 1 }  // đếm Accepted
+                }
+            },
+            {
+                $project: {
+                    _id: '$user._id',
+                    userName: '$user.userName',
+                    avatar: '$user.avatar',
+                    acceptedCount: 1
+                }
+            },
+            {
+                $sort: { acceptedCount: -1 } // sắp xếp giảm dần theo acceptedCount
+            },
+            {
+                $skip: skip
+            },
+            {
+                $limit: pageSize
+            }
+        ]);
+        return response.sendSuccess(res, users);
+    }
+    catch (error) {
+        console.error('Error getting most solved users:', error);
+        return response.sendError(res, 'Internal server error', 500);
+    }
+}

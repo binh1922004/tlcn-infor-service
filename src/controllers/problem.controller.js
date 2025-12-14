@@ -50,13 +50,16 @@ export const uploadProblemTestcases = async (req, res) => {
 export const createProblem = async (req, res) => {
     try{
         const problem = req.body;
-        const userId = req.user?._id;
+        const userId = req.user._id;
+        problem.createBy = userId;
+        console.log(userId)
         if (problem.classroomId) {
             problem.classRoom = problem.classroomId;
             problem.isPrivate = true;
-            problem.createdBy = userId;
         }
+
         const createdProblem = await problemModels.create(problem);
+        console.log(userId)
         return response.sendSuccess(res, createdProblem);
     }
     catch (error) {
@@ -355,5 +358,118 @@ export const getPublicProblemsForSelection = async (req, res) => {
     } catch (error) {
         console.log(error);
         return response.sendError(res, error);
+    }
+};
+
+/**
+ * Get problems created by current logged-in user
+ * Query params: classroomId, name, difficulty, tag, page, size
+ */
+export const getMyProblems = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { classroomId, name, difficulty, tag, page = 1, size = 20, sortBy = 'createdAt', order = 'desc' } = req.query;
+
+        // Build filter
+        let filter = {
+            createBy: userId
+        };
+
+        // Filter by classroomId
+        if (classroomId) {
+            if (classroomId === 'null' || classroomId === 'public') {
+                filter.classRoom = null; // Public problems only
+            } else {
+                filter.classRoom = classroomId;
+            }
+        }
+
+        // Filter by name (search in name and shortId)
+        if (name) {
+            filter.$or = [
+                { name: { $regex: name, $options: 'i' } },
+                { shortId: { $regex: name, $options: 'i' } }
+            ];
+        }
+
+        // Filter by difficulty
+        if (difficulty) {
+            filter.difficulty = difficulty;
+        }
+
+        // Filter by tag
+        if (tag) {
+            filter.tags = tag;
+        }
+
+        // Pagination
+        const pageNumber = parseInt(page);
+        const pageSize = parseInt(size);
+        const skip = (pageNumber - 1) * pageSize;
+
+        // Sort options
+        const sortOrder = order.toLowerCase() === 'asc' ? 1 : -1;
+        const sortOptions = { [sortBy]: sortOrder, _id: sortOrder };
+
+        console.log('📝 My problems filter:', filter);
+        console.log('📊 Sort:', sortOptions);
+
+        // ✅ FIX: Không populate classRoom, sẽ manually populate sau
+        const problems = await problemModels
+            .find(filter, { numberOfTestcases: 0 })
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(pageSize)
+            .lean(); // ✅ Use lean() để get plain objects
+
+        const total = await problemModels.countDocuments(filter);
+
+        // ✅ Manually populate classroom info để tránh lỗi virtual
+        const classroomModel = (await import('../models/classroom.model.js')).default;
+        const classroomIds = problems
+            .map(p => p.classRoom)
+            .filter(id => id !== null && id !== undefined);
+
+        let classroomsMap = {};
+        if (classroomIds.length > 0) {
+            const classrooms = await classroomModel
+                .find({ _id: { $in: classroomIds } })
+                .select('_id className classCode')
+                .lean();
+            
+            classroomsMap = classrooms.reduce((map, classroom) => {
+                map[classroom._id.toString()] = classroom;
+                return map;
+            }, {});
+        }
+
+        // ✅ Attach classroom info to problems
+        const problemsWithClassroom = problems.map(problem => ({
+            ...problem,
+            classRoom: problem.classRoom ? classroomsMap[problem.classRoom.toString()] || null : null
+        }));
+
+        // Get statistics by classroom
+        const stats = await problemModels.aggregate([
+            { $match: { createBy: userId } },
+            {
+                $group: {
+                    _id: '$classRoom',
+                    count: { $sum: 1 },
+                    active: { $sum: { $cond: ['$isActive', 1, 0] } },
+                    private: { $sum: { $cond: ['$isPrivate', 1, 0] } }
+                }
+            }
+        ]);
+
+        console.log('✅ Found', problemsWithClassroom.length, 'problems');
+
+        return response.sendSuccess(res, {
+            ...pageDTO(problemsWithClassroom, total, pageNumber, pageSize),
+            stats
+        });
+    } catch (error) {
+        console.error('❌ Error getting my problems:', error);
+        return response.sendError(res, error.message || 'Error getting my problems', 500);
     }
 };
