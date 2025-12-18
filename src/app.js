@@ -29,7 +29,9 @@ app.use(
       "http://localhost:5174", // Frontend Vite
       "http://127.0.0.1:5174", // Alternative localhost
       "http://localhost:5175",
-      "http://127.0.0.1:5175"
+      "http://127.0.0.1:5175",
+        "https://ball.id.vn",
+        "https://ball.id.vn",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
