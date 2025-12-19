@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import crypto from "crypto";
 const classroomSchema = new mongoose.Schema(
   {
-    // Mã lớp học (dùng cho join class) - Format: PREFIX-YY-XXXX
     classCode: {
       type: String,
       unique: true,
@@ -39,7 +38,6 @@ const classroomSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Người tạo/quản lý lớp (teacher hoặc admin)
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -47,7 +45,6 @@ const classroomSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Danh sách giáo viên phụ (nếu có)
     teachers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -103,7 +100,6 @@ const classroomSchema = new mongoose.Schema(
       },
     ],
 
-    // Danh sách bài tập trong lớp - SỬ DỤNG shortId
     problems: [
       {
         problemShortId: {
@@ -134,7 +130,6 @@ const classroomSchema = new mongoose.Schema(
       },
     ],
 
-    // ===== THÊM MỚI: Invite Tokens cho email invitations =====
     inviteTokens: [
       {
         token: {
@@ -369,7 +364,6 @@ classroomSchema.methods.getPendingInvites = function () {
   );
 };
 
-// ===== EXISTING METHODS =====
 
 /**
  * Tạo invite code ngẫu nhiên (6 ký tự)

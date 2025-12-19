@@ -1,5 +1,6 @@
 import response from '../helpers/response.js';
 import classroomModel from '../models/classroom.model.js';
+import contestModel from '../models/contest.model.js';
 import mongoose from 'mongoose';
 /**
  * Middleware kiểm tra user có quyền truy cập classroom không
@@ -289,11 +290,75 @@ export const checkClassroomSettings = (settingKey) => {
   };
 };
 
+export const verifyClassroomStudentForContest = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return response.sendError(res, "Unauthenticated", 401);
+    }
+
+    const contestId = req.params.id; 
+    const userId = req.user._id;
+    const userRole = req.user.role;
+
+    //  Validate contestId format
+    if (!mongoose.Types.ObjectId.isValid(contestId)) {
+      return response.sendError(res, 'ID kỳ thi không hợp lệ', 400);
+    }
+
+    // Find contest with classroom
+    const contest = await contestModel.findById(contestId).populate('classRoom');
+    
+    if (!contest) {
+      return response.sendError(res, 'Không tìm thấy kỳ thi', 404);
+    }
+
+    // Must be a classroom contest
+    if (!contest.classRoom) {
+      return response.sendError(res, 'Đây không phải là kỳ thi của lớp học', 400);
+    }
+
+    const classroom = contest.classRoom;
+
+    // Admin có quyền
+    if (userRole === 'admin') {
+      req.contest = contest;
+      req.classroom = classroom;
+      req.isClassroomStudent = true;
+      return next();
+    }
+
+    // Check if user is active student
+    const isActiveStudent = classroom.students.some(
+      student => student.userId.toString() === userId.toString() && 
+                student.status === 'active'
+    );
+
+    if (!isActiveStudent) {
+      return response.sendError(
+        res, 
+        'Bạn phải là học sinh đang học trong lớp này để đăng ký kỳ thi', 
+        403
+      );
+    }
+
+    // Attach data to request
+    req.contest = contest;
+    req.classroom = classroom;
+    req.isClassroomStudent = true;
+
+    next();
+  } catch (error) {
+    console.error('❌ Error in verifyClassroomStudentForContest:', error);
+    return response.sendError(res, 'Internal server error', 500);
+  }
+};
+
 export default {
   verifyClassroomAccess,
   verifyClassroomTeacher,
   verifyClassroomOwner,
   loadClassroom,
   checkClassroomActive,
-  checkClassroomSettings
+  checkClassroomSettings,
+  verifyClassroomStudentForContest
 };

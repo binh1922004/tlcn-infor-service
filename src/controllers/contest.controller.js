@@ -167,7 +167,7 @@ export const getAllPublicContests = async (req, res, next) => {
         console.log('userId: ', userId);
         const match = {};
         match.isActive = true;
-
+        match.classRoom = null;
         const now = new Date();
         console.log('Status: ', status);
         if (status) {
@@ -367,17 +367,42 @@ export const codeChecking = async (req, res, next) => {
 export const getContestById = async (req, res, next) => {
     try {
         const contestId = req.params.id;
-        const contest = await contestModel.findById(contestId).populate({
-            path: 'problems.problemId',
-            select: 'name difficulty shortId' // chọn các field muốn lấy
-        })
+        const user = req.user;
+        
+        const contest = await contestModel.findById(contestId)
+            .populate({
+                path: 'problems.problemId',
+                select: 'name difficulty shortId'
+            })
+            .populate({
+                path: 'classRoom',
+                select: 'className classCode'
+            });
+            
         if (!contest) {
             return response.sendError(res, 'Contest not found', 404);
         }
-        if (contest.isPrivate && req.user?.role !== 'admin') {
-            return response.sendError(res, 'Access denied. This contest is private.', 403);
+        if (contest.isPrivate) {
+            if (user?.role === 'admin') {
+                return response.sendSuccess(res, mapToContestDto(contest));
+            }
+            // Teacher can ONLY view their own private contests
+            if (user?.role === 'teacher') {
+                const isOwner = contest.createdBy && 
+                               contest.createdBy.toString() === user._id.toString();
+                
+                if (isOwner) {
+                    return response.sendSuccess(res, mapToContestDto(contest));
+                }
+                
+                return response.sendError(res, 'Bạn chỉ có thể xem kỳ thi do bạn tạo', 403);
+            }
+            
+            // Other users cannot view private contests
+            return response.sendError(res, 'Kỳ thi này là riêng tư', 403);
         }
-        console.log(contest);
+        
+        // Public contest - anyone can view
         return response.sendSuccess(res, mapToContestDto(contest));
     }
     catch (error) {
@@ -566,3 +591,63 @@ export const getUpcomingContests = async (req, res, next) => {
         return response.sendError(res, error);
     }
 }
+export const registerToClassroomContest = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+        const body = req.body;
+        
+        // Contest và classroom đã được load bởi middleware
+        const contest = req.contest;
+        const classroom = req.classroom;
+
+        // Check if already registered
+        const isRegistered = await contestParticipantModel.exists({
+            contestId: contest._id, 
+            userId: userId
+        });
+        
+        if (isRegistered) {
+            return response.sendError(res, 'Bạn đã đăng ký kỳ thi này rồi', 400);
+        }
+
+        // Check password if contest is private
+        if (contest.isPrivate) {
+            const passwordMatch = await bcrypt.compare(body.password || '', contest.password || '');
+            if (!passwordMatch) {
+                return response.sendError(res, 'Mật khẩu không chính xác', 403);
+            }
+        }
+
+        // Create participant record
+        const contestParticipant = {
+            contestId: contest._id,
+            userId: userId,
+            registeredAt: new Date(),
+            mode: "official",
+            startTime: contest.startTime,
+            endTime: contest.endTime,
+        };
+        
+        await contestParticipantModel.create(contestParticipant);
+        
+        return response.sendSuccess(res, {
+            message: 'Đăng ký kỳ thi thành công',
+            contest: {
+                _id: contest._id,
+                title: contest.title,
+                code: contest.code,
+                startTime: contest.startTime,
+                endTime: contest.endTime
+            },
+            classroom: {
+                _id: classroom._id,
+                className: classroom.className,
+                classCode: classroom.classCode
+            }
+        });
+    }
+    catch (error) {
+        console.error('❌ Error in registerToClassroomContest:', error);
+        return response.sendError(res, error);
+    }
+};

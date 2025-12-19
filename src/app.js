@@ -17,6 +17,9 @@ import notificationRoutes from './routes/notification.routes.js';
 import broadcastRoutes from './routes/broadcast.routes.js';
 import adminSubmissionRoutes from "./routes/admin.submission.routes.js";
 import solutionRoutes from './routes/solution.routes.js';
+import teacherContestRoutes from './routes/teacher.contest.routes.js';
+import teacherSubmissionRoutes from './routes/teacher.submission.routes.js';
+import statisticsRoutes from './routes/statistics.routes.js';
 console.log(config.fe_url)
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -48,11 +51,13 @@ app.use('/api/users', userRoutes)
 app.use('/api/auth', authRoutes)
 app.use('/api/problems', problemRoutes)
 app.use('/api/submissions', submissionRoute)
-
+app.use('/api/statistics', statisticsRoutes);
 app.use('/api/posts', postRoutes)
 app.use('/api/upload/posts', uploadPostRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/contests', contestRoutes);
+app.use('/api/teacher/contests', teacherContestRoutes);
+app.use('/api/teacher/submissions', teacherSubmissionRoutes);
 app.use('/api/admin/contests', adminContestRoutes);
 app.use('/api/admin/submissions', adminSubmissionRoutes)
 app.use('/api/classroom', classroom);
