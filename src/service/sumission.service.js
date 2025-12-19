@@ -1,8 +1,7 @@
 import SubmissionModel from "../models/submission.model.js";
 import {sendMessageToUser} from "../socket/socket.js";
 import {Status} from "../utils/statusType.js";
-import {updateContestParticipantProblemScore} from "./contest.service.js";
-
+import { updateContestParticipantProblemScore } from "./contest.service.js";
 const updateClassroomProgress = async (userId, problemId, status) => {
     try {
         const problemModel = (await import('../models/problem.models.js')).default;

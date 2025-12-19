@@ -57,6 +57,9 @@ export const createProblem = async (req, res) => {
             problem.classRoom = problem.classroomId;
             problem.isPrivate = true;
         }
+        if (problem.isContestInClassroom === undefined) {
+            problem.isContestInClassroom = false;
+        }
 
         const createdProblem = await problemModels.create(problem);
         console.log(userId)
@@ -114,6 +117,7 @@ export const getProblems = async (req, res) => {
         }
         filter.isActive = true;
         filter.isPrivate = false;
+        filter.classRoom = null;
         const pageNumber = parseInt(page) || 1;
         const pageSize = parseInt(size) || 20;
         const skip = (pageNumber - 1) * pageSize;
@@ -280,7 +284,8 @@ export const getProblemsByClassroom = async (req, res) => {
 
         const filter = {
             classRoom: classroomId,
-            isActive: true
+            isActive: true,
+            isContestInClassroom: false
         };
 
         const problems = await problemModels
@@ -411,20 +416,16 @@ export const getMyProblems = async (req, res) => {
         const sortOrder = order.toLowerCase() === 'asc' ? 1 : -1;
         const sortOptions = { [sortBy]: sortOrder, _id: sortOrder };
 
-        console.log('📝 My problems filter:', filter);
-        console.log('📊 Sort:', sortOptions);
-
-        // ✅ FIX: Không populate classRoom, sẽ manually populate sau
         const problems = await problemModels
             .find(filter, { numberOfTestcases: 0 })
             .sort(sortOptions)
             .skip(skip)
             .limit(pageSize)
-            .lean(); // ✅ Use lean() để get plain objects
+            .lean(); // Use lean() để get plain objects
 
         const total = await problemModels.countDocuments(filter);
 
-        // ✅ Manually populate classroom info để tránh lỗi virtual
+        // Manually populate classroom info để tránh lỗi virtual
         const classroomModel = (await import('../models/classroom.model.js')).default;
         const classroomIds = problems
             .map(p => p.classRoom)
@@ -443,7 +444,7 @@ export const getMyProblems = async (req, res) => {
             }, {});
         }
 
-        // ✅ Attach classroom info to problems
+        // Attach classroom info to problems
         const problemsWithClassroom = problems.map(problem => ({
             ...problem,
             classRoom: problem.classRoom ? classroomsMap[problem.classRoom.toString()] || null : null
@@ -462,7 +463,6 @@ export const getMyProblems = async (req, res) => {
             }
         ]);
 
-        console.log('✅ Found', problemsWithClassroom.length, 'problems');
 
         return response.sendSuccess(res, {
             ...pageDTO(problemsWithClassroom, total, pageNumber, pageSize),

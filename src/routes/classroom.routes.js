@@ -5,14 +5,14 @@ import {
   getClassrooms,
   getClassroomById,
   getClassroomByClassCode,
-  joinClassroom,
-  leaveClassroom,
-  addProblemToClassroom,
-  removeProblemFromClassroom,
-  getClassroomProblems,
   updateClassroom,
   deleteClassroom,
-  regenerateInviteCode,
+  regenerateInviteCode
+} from '../controllers/classroom/classroom.controller.js';
+
+import {
+  joinClassroom,
+  leaveClassroom,
   addStudent,
   removeStudent,
   getStudents,
@@ -21,22 +21,58 @@ import {
   createStudentAccounts,
   verifyInviteToken,
   checkEmailRegistered,
-  joinClassroomByToken,
-  getSubmissions,
-  getStudentSubmissions,
-  getProblemSubmissions,
-  getLeaderboard,
-  getStats,
+  joinClassroomByToken
+} from '../controllers/classroom/classroom.member.controller.js';
+
+import {
+  addProblemToClassroom,
+  updateProblemInClassroom,
+  removeProblemFromClassroom,
+  getClassroomProblems,
   getClassroomProblemsWithProgress,
+  getSubmissions,
+  getProblemSubmissions
+} from '../controllers/classroom/classroom.assignment.controller.js';
+
+import {
   getStudentProgress,
-  getRecentActivities,
+  getStudentSubmissions,
+  getSubmissionDetail,
   getGradeBook,
   exportGradeBook,
-  getSubmissionDetail,
-  updateProblemInClassroom
-  
-  
-} from '../controllers/classroom.controller.js';
+  getLeaderboard
+} from '../controllers/classroom/classroom.grade.controller.js';
+
+import {
+  createExamForClassroom,
+  getClassroomExams,
+  deleteExamFromClassroom
+} from '../controllers/classroom/classroom.contest.controller.js';
+
+import {
+  getStats,
+  getRecentActivities
+} from '../controllers/classroom/classroom.stats.controller.js';
+import {
+  createDiscussion,
+  getDiscussions,
+  getDiscussionById,
+  updateDiscussion,
+  deleteDiscussion,
+  addComment,
+  editComment,
+  deleteComment,
+  toggleCommentLike,
+  addReaction,
+  removeReaction,
+  togglePin,
+  toggleLock,
+  archiveDiscussion,
+  addReply,
+  editReply,
+  deleteReply,
+  toggleReplyLike
+} from '../controllers/classroom/classroom.discussion.controller.js';
 import { 
   authenticateToken, 
   verifyAdminOrTeacher
@@ -73,14 +109,12 @@ const upload = multer({
   }
 });
 
-// ===== PUBLIC ROUTES (TRƯỚC authenticateToken) =====
 router.post('/check-email', checkEmailRegistered);
 router.get('/:classCode/verify-invite/:token', verifyInviteToken);
 
 // ===== AUTHENTICATED ROUTES =====
 router.use(authenticateToken);
 
-// ===== SPECIFIC ROUTES (TRƯỚC DYNAMIC ROUTES) =====
 // Join classroom routes
 router.post('/join', joinClassroom);
 router.post('/:classCode/join-by-token', joinClassroomByToken);
@@ -90,7 +124,21 @@ router.put('/class/:classCode', verifyClassroomOwner, updateClassroom);
 router.delete('/class/:classCode', verifyClassroomOwner, deleteClassroom);
 router.post('/class/:classCode/regenerate-invite', verifyClassroomOwner, regenerateInviteCode);
 router.post('/class/:classCode/leave', loadClassroom, leaveClassroom);
-
+// Exam routes with classCode
+router.post('/class/:classCode/exams', 
+  verifyClassroomTeacher, 
+  checkClassroomActive, 
+  createExamForClassroom
+);
+router.get('/class/:classCode/exams', 
+  verifyClassroomAccess, 
+  getClassroomExams
+);
+router.delete('/class/:classCode/exams/:contestId', 
+  verifyClassroomTeacher, 
+  checkClassroomActive, 
+  deleteExamFromClassroom
+);
 
 // Problems routes with classCode
 router.get('/class/:classCode/problems', verifyClassroomAccess, getClassroomProblems);
@@ -155,6 +203,110 @@ router.get('/:classCode/gradebook/export',
 );
 router.get('/class/:classCode/stats', verifyClassroomAccess, getStats);
 router.get('/class/:classCode/activities', verifyClassroomAccess, getRecentActivities);
+
+router.get('/class/:classCode/discussions', 
+  verifyClassroomAccess, 
+  getDiscussions
+);
+
+router.post('/class/:classCode/discussions', 
+  verifyClassroomAccess,
+  checkClassroomActive,
+  createDiscussion
+);
+
+router.get('/class/:classCode/discussions/:discussionId', 
+  verifyClassroomAccess, 
+  getDiscussionById
+);
+
+router.put('/class/:classCode/discussions/:discussionId', 
+  verifyClassroomAccess,
+  checkClassroomActive,
+  updateDiscussion
+);
+
+router.delete('/class/:classCode/discussions/:discussionId', 
+  verifyClassroomAccess,
+  checkClassroomActive,
+  deleteDiscussion
+);
+
+// Comments
+router.post('/class/:classCode/discussions/:discussionId/comments', 
+  verifyClassroomAccess,
+  checkClassroomActive,
+  addComment
+);
+
+router.put('/class/:classCode/discussions/:discussionId/comments/:commentId',
+  verifyClassroomAccess,
+  checkClassroomActive,
+  editComment
+);
+
+router.delete('/class/:classCode/discussions/:discussionId/comments/:commentId',
+  verifyClassroomAccess,
+  checkClassroomActive,
+  deleteComment
+);
+
+router.post('/class/:classCode/discussions/:discussionId/comments/:commentId/like',
+  verifyClassroomAccess,
+  toggleCommentLike
+);
+//Reply
+router.post('/class/:classCode/discussions/:discussionId/comments/:commentId/replies', 
+  verifyClassroomAccess,
+  checkClassroomActive,
+  addReply
+);
+
+router.put('/class/:classCode/discussions/:discussionId/comments/:commentId/replies/:replyId',
+  verifyClassroomAccess,
+  checkClassroomActive,
+  editReply
+);
+
+router.delete('/class/:classCode/discussions/:discussionId/comments/:commentId/replies/:replyId',
+  verifyClassroomAccess,
+  checkClassroomActive,
+  deleteReply
+);
+
+router.post('/class/:classCode/discussions/:discussionId/comments/:commentId/replies/:replyId/like',
+  verifyClassroomAccess,
+  toggleReplyLike
+);
+
+
+// Reactions
+router.post('/class/:classCode/discussions/:discussionId/react',
+  verifyClassroomAccess,
+  addReaction
+);
+
+router.delete('/class/:classCode/discussions/:discussionId/react',
+  verifyClassroomAccess,
+  removeReaction
+);
+
+// Pin/Lock (Teacher only)
+router.post('/class/:classCode/discussions/:discussionId/pin',
+  verifyClassroomTeacher,
+  togglePin
+);
+
+router.post('/class/:classCode/discussions/:discussionId/lock',
+  verifyClassroomTeacher,
+  toggleLock
+);
+
+router.post('/class/:classCode/discussions/:discussionId/archive',
+  verifyClassroomTeacher,
+  archiveDiscussion
+);
+
 // TEACHER/ADMIN ROUTES 
 router.post('/', verifyAdminOrTeacher, createClassroom);
 
