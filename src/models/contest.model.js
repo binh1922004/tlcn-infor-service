@@ -21,6 +21,7 @@ const contestSchema = new mongoose.Schema({
     isActive: { type: Boolean, default: false },
     classRoom: { type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null},
     shortId: { type: String, default: () => randomString() },
+    noOfParticipants: { type: Number, default: 0 },
 }, {
     timestamps: true,//auto generate createAt and updateAt
     strict: true,

@@ -322,3 +322,57 @@ export const updateUserStatus = async (req, res, next) => {
     return response.sendError(res, 'Internal server error', 500);
   }
 };
+
+export const getMostSolvedUsers = async (req, res, next) => {
+    try {
+        const {page, size} = req.query;
+        const pageNumber = parseInt(page) || 1;
+        const pageSize = parseInt(size) || 10;
+        const skip = (pageNumber - 1) * pageSize;
+        const users = await userModel.aggregate([
+            {
+                $lookup: {
+                    from: 'submissions',
+                    localField: '_id',
+                    foreignField: 'user',
+                    as: 'submissions'
+                }
+            },
+            { $unwind: '$submissions' },
+            {
+                $match: {
+                    'submissions.status': 'Accepted'
+                }
+            },
+            {
+                $group: {
+                    _id: '$_id',                 // group theo user
+                    user: { $first: '$$ROOT' }, // giữ lại thông tin user
+                    acceptedCount: { $sum: 1 }  // đếm Accepted
+                }
+            },
+            {
+                $project: {
+                    _id: '$user._id',
+                    userName: '$user.userName',
+                    avatar: '$user.avatar',
+                    acceptedCount: 1
+                }
+            },
+            {
+                $sort: { acceptedCount: -1 } // sắp xếp giảm dần theo acceptedCount
+            },
+            {
+                $skip: skip
+            },
+            {
+                $limit: pageSize
+            }
+        ]);
+        return response.sendSuccess(res, users);
+    }
+    catch (error) {
+        console.error('Error getting most solved users:', error);
+        return response.sendError(res, 'Internal server error', 500);
+    }
+}
