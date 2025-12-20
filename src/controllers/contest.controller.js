@@ -467,6 +467,7 @@ export const registerToContest = async (req, res, next) => {
             endTime: contest.endTime,
         }
         await contestParticipantModel.create(contestParticipant);
+        await contestModel.updateOne({ _id: contest._id }, { $inc: { noOfParticipants: 1 } });
         return response.sendSuccess(res, 'Registered to contest successfully');
     }
     catch (error) {
