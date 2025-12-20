@@ -5,5 +5,5 @@ import {getSubmission, getSubmissionStatistics, getAllSubmissionStatusStatistics
 const router = express.Router()
 router.get('', authenticateToken, verifyAdmin, getSubmission);
 router.get('/stats', authenticateToken, verifyAdmin, getSubmissionStatistics);
-router.get('/admin/statistics/all-status', authenticateToken, verifyAdmin, getAllSubmissionStatusStatistics);
+router.get('/statistics/all-status', authenticateToken, verifyAdmin, getAllSubmissionStatusStatistics);
 export default router;

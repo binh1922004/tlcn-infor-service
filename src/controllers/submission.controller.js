@@ -347,256 +347,6 @@ export const getSubmissionStatusChartByUser = async (req, res) => {
   }
 };
 
-export const getAllSubmissionStatusStatistics = async (req, res) => {
-  try {
-    // Get filter params (optional)
-    const { userId, problemId, contestId, classroomId, startDate, endDate } = req.query;
-
-    // Build base filter
-    let filter = {};
-
-    // Apply filters if provided
-    if (userId) {
-      filter.user = new mongoose.Types.ObjectId(userId);
-    }
-
-    if (problemId) {
-      filter.problem = new mongoose.Types.ObjectId(problemId);
-    }
-
-    if (contestId) {
-      filter.contest = new mongoose.Types.ObjectId(contestId);
-    }
-
-    if (classroomId) {
-      filter.classroom = new mongoose.Types.ObjectId(classroomId);
-    }
-
-    // Date range filter
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) {
-        filter.createdAt.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        filter.createdAt.$lte = new Date(endDate);
-      }
-    }
-
-    // Count total submissions
-    const totalSubmissions = await SubmissionModel.countDocuments(filter);
-
-    // Get status counts using aggregation
-    const statusCounts = await SubmissionModel.aggregate([
-      {
-        $match: filter
-      },
-      {
-        $group: {
-          _id: "$status",
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          status: "$_id",
-          count: 1
-        }
-      },
-      {
-        $sort: { count: -1 } // Sort by count descending
-      }
-    ]);
-
-    // Create status map for easy access
-    const statusMap = {};
-    statusCounts.forEach(item => {
-      statusMap[item.status] = item.count;
-    });
-
-    // Define all possible statuses with their counts
-    const allStatuses = {
-      [Status.AC]: statusMap[Status.AC] || 0,
-      [Status.WA]: statusMap[Status.WA] || 0,
-      [Status.TLE]: statusMap[Status.TLE] || 0,
-      [Status.MLE]: statusMap[Status.MLE] || 0,
-      [Status.RE]: statusMap[Status.RE] || 0,
-      [Status.CE]: statusMap[Status.CE] || 0,
-      [Status.Pending]: statusMap[Status.Pending] || 0,
-      [Status.IE]: statusMap[Status.IE] || 0,
-    };
-
-    // Calculate percentages
-    const statusPercentages = {};
-    Object.keys(allStatuses).forEach(status => {
-      statusPercentages[status] = totalSubmissions > 0
-        ? ((allStatuses[status] / totalSubmissions) * 100).toFixed(2)
-        : "0.00";
-    });
-
-    // Calculate acceptance rate
-    const acceptedCount = allStatuses[Status.AC];
-    const acceptanceRate = totalSubmissions > 0
-      ? ((acceptedCount / totalSubmissions) * 100).toFixed(2)
-      : "0.00";
-
-    // Get additional statistics
-    const uniqueUsers = await SubmissionModel.distinct('user', filter);
-    const uniqueProblems = await SubmissionModel.distinct('problem', filter);
-
-    // Get average submission time (for accepted submissions)
-    const avgTimeResult = await SubmissionModel.aggregate([
-      {
-        $match: {
-          ...filter,
-          status: Status.AC,
-          time: { $exists: true, $ne: null }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          avgTime: { $avg: "$time" },
-          maxTime: { $max: "$time" },
-          minTime: { $min: "$time" }
-        }
-      }
-    ]);
-
-    const timeStats = avgTimeResult.length > 0
-      ? {
-          average: Math.round(avgTimeResult[0].avgTime),
-          max: avgTimeResult[0].maxTime,
-          min: avgTimeResult[0].minTime
-        }
-      : {
-          average: 0,
-          max: 0,
-          min: 0
-        };
-
-    // Get average memory (for accepted submissions)
-    const avgMemoryResult = await SubmissionModel.aggregate([
-      {
-        $match: {
-          ...filter,
-          status: Status.AC,
-          memory: { $exists: true, $ne: null }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          avgMemory: { $avg: "$memory" },
-          maxMemory: { $max: "$memory" },
-          minMemory: { $min: "$memory" }
-        }
-      }
-    ]);
-
-    const memoryStats = avgMemoryResult.length > 0
-      ? {
-          average: Math.round(avgMemoryResult[0].avgMemory),
-          max: avgMemoryResult[0].maxMemory,
-          min: avgMemoryResult[0].minMemory
-        }
-      : {
-          average: 0,
-          max: 0,
-          min: 0
-        };
-
-    // Get submissions by language
-    const languageStats = await SubmissionModel.aggregate([
-      {
-        $match: filter
-      },
-      {
-        $group: {
-          _id: "$language",
-          count: { $sum: 1 },
-          accepted: {
-            $sum: { $cond: [{ $eq: ["$status", Status.AC] }, 1, 0] }
-          }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          language: "$_id",
-          total: "$count",
-          accepted: 1,
-          acceptanceRate: {
-            $cond: [
-              { $gt: ["$count", 0] },
-              { $multiply: [{ $divide: ["$accepted", "$count"] }, 100] },
-              0
-            ]
-          }
-        }
-      },
-      {
-        $sort: { total: -1 }
-      }
-    ]);
-
-    console.log('✅ All submission status statistics retrieved successfully');
-
-    return response.sendSuccess(res, {
-      total: totalSubmissions,
-      acceptanceRate: parseFloat(acceptanceRate),
-      
-      // Status counts
-      statusCounts: allStatuses,
-      
-      // Status percentages
-      statusPercentages: Object.keys(statusPercentages).reduce((acc, key) => {
-        acc[key] = parseFloat(statusPercentages[key]);
-        return acc;
-      }, {}),
-      
-      // Detailed status breakdown
-      statusBreakdown: statusCounts,
-      
-      // User and problem statistics
-      statistics: {
-        uniqueUsers: uniqueUsers.length,
-        uniqueProblems: uniqueProblems.length,
-        averageSubmissionsPerUser: uniqueUsers.length > 0
-          ? (totalSubmissions / uniqueUsers.length).toFixed(2)
-          : "0.00",
-        averageSubmissionsPerProblem: uniqueProblems.length > 0
-          ? (totalSubmissions / uniqueProblems.length).toFixed(2)
-          : "0.00"
-      },
-      
-      // Performance statistics (for AC submissions)
-      performance: {
-        time: timeStats,
-        memory: memoryStats
-      },
-      
-      // Language statistics
-      languageStatistics: languageStats,
-      
-      // Applied filters
-      filters: {
-        userId: userId || null,
-        problemId: problemId || null,
-        contestId: contestId || null,
-        classroomId: classroomId || null,
-        startDate: startDate || null,
-        endDate: endDate || null
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error getting all submission status statistics:', error);
-    return response.sendError(res, error);
-  }
-};
-
 export const getSubmissionDifficultyChart = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -854,6 +604,254 @@ export const getClassroomSubmissionStatistics = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Get classroom submission statistics error:', error);
+    return response.sendError(res, error);
+  }
+};
+export const getAllSubmissionStatusStatistics = async (req, res) => {
+  try {
+    // Get filter params (optional)
+    const { userId, problemId, contestId, classroomId, startDate, endDate } = req.query;
+
+    // Build base filter
+    let filter = {};
+
+    // Apply filters if provided
+    if (userId) {
+      filter.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    if (problemId) {
+      filter.problem = new mongoose.Types.ObjectId(problemId);
+    }
+
+    if (contestId) {
+      filter.contest = new mongoose.Types.ObjectId(contestId);
+    }
+
+    if (classroomId) {
+      filter.classroom = new mongoose.Types.ObjectId(classroomId);
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) {
+        filter.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        filter.createdAt.$lte = new Date(endDate);
+      }
+    }
+
+    // Count total submissions
+    const totalSubmissions = await SubmissionModel.countDocuments(filter);
+
+    // Get status counts using aggregation
+    const statusCounts = await SubmissionModel.aggregate([
+      {
+        $match: filter
+      },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          status: "$_id",
+          count: 1
+        }
+      },
+      {
+        $sort: { count: -1 } // Sort by count descending
+      }
+    ]);
+
+    // Create status map for easy access
+    const statusMap = {};
+    statusCounts.forEach(item => {
+      statusMap[item.status] = item.count;
+    });
+
+    // Define all possible statuses with their counts
+    const allStatuses = {
+      [Status.AC]: statusMap[Status.AC] || 0,
+      [Status.WA]: statusMap[Status.WA] || 0,
+      [Status.TLE]: statusMap[Status.TLE] || 0,
+      [Status.MLE]: statusMap[Status.MLE] || 0,
+      [Status.RE]: statusMap[Status.RE] || 0,
+      [Status.CE]: statusMap[Status.CE] || 0,
+      [Status.Pending]: statusMap[Status.Pending] || 0,
+      [Status.IE]: statusMap[Status.IE] || 0,
+    };
+
+    // Calculate percentages
+    const statusPercentages = {};
+    Object.keys(allStatuses).forEach(status => {
+      statusPercentages[status] = totalSubmissions > 0
+        ? ((allStatuses[status] / totalSubmissions) * 100).toFixed(2)
+        : "0.00";
+    });
+
+    // Calculate acceptance rate
+    const acceptedCount = allStatuses[Status.AC];
+    const acceptanceRate = totalSubmissions > 0
+      ? ((acceptedCount / totalSubmissions) * 100).toFixed(2)
+      : "0.00";
+
+    // Get additional statistics
+    const uniqueUsers = await SubmissionModel.distinct('user', filter);
+    const uniqueProblems = await SubmissionModel.distinct('problem', filter);
+
+    // Get average submission time (for accepted submissions)
+    const avgTimeResult = await SubmissionModel.aggregate([
+      {
+        $match: {
+          ...filter,
+          status: Status.AC,
+          time: { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgTime: { $avg: "$time" },
+          maxTime: { $max: "$time" },
+          minTime: { $min: "$time" }
+        }
+      }
+    ]);
+
+    const timeStats = avgTimeResult.length > 0
+      ? {
+          average: Math.round(avgTimeResult[0].avgTime),
+          max: avgTimeResult[0].maxTime,
+          min: avgTimeResult[0].minTime
+        }
+      : {
+          average: 0,
+          max: 0,
+          min: 0
+        };
+
+    // Get average memory (for accepted submissions)
+    const avgMemoryResult = await SubmissionModel.aggregate([
+      {
+        $match: {
+          ...filter,
+          status: Status.AC,
+          memory: { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgMemory: { $avg: "$memory" },
+          maxMemory: { $max: "$memory" },
+          minMemory: { $min: "$memory" }
+        }
+      }
+    ]);
+
+    const memoryStats = avgMemoryResult.length > 0
+      ? {
+          average: Math.round(avgMemoryResult[0].avgMemory),
+          max: avgMemoryResult[0].maxMemory,
+          min: avgMemoryResult[0].minMemory
+        }
+      : {
+          average: 0,
+          max: 0,
+          min: 0
+        };
+
+    // Get submissions by language
+    const languageStats = await SubmissionModel.aggregate([
+      {
+        $match: filter
+      },
+      {
+        $group: {
+          _id: "$language",
+          count: { $sum: 1 },
+          accepted: {
+            $sum: { $cond: [{ $eq: ["$status", Status.AC] }, 1, 0] }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          language: "$_id",
+          total: "$count",
+          accepted: 1,
+          acceptanceRate: {
+            $cond: [
+              { $gt: ["$count", 0] },
+              { $multiply: [{ $divide: ["$accepted", "$count"] }, 100] },
+              0
+            ]
+          }
+        }
+      },
+      {
+        $sort: { total: -1 }
+      }
+    ]);
+
+
+    return response.sendSuccess(res, {
+      total: totalSubmissions,
+      acceptanceRate: parseFloat(acceptanceRate),
+      
+      // Status counts
+      statusCounts: allStatuses,
+      
+      // Status percentages
+      statusPercentages: Object.keys(statusPercentages).reduce((acc, key) => {
+        acc[key] = parseFloat(statusPercentages[key]);
+        return acc;
+      }, {}),
+      
+      // Detailed status breakdown
+      statusBreakdown: statusCounts,
+      
+      // User and problem statistics
+      statistics: {
+        uniqueUsers: uniqueUsers.length,
+        uniqueProblems: uniqueProblems.length,
+        averageSubmissionsPerUser: uniqueUsers.length > 0
+          ? (totalSubmissions / uniqueUsers.length).toFixed(2)
+          : "0.00",
+        averageSubmissionsPerProblem: uniqueProblems.length > 0
+          ? (totalSubmissions / uniqueProblems.length).toFixed(2)
+          : "0.00"
+      },
+      
+      // Performance statistics (for AC submissions)
+      performance: {
+        time: timeStats,
+        memory: memoryStats
+      },
+      
+      // Language statistics
+      languageStatistics: languageStats,
+      
+      // Applied filters
+      filters: {
+        userId: userId || null,
+        problemId: problemId || null,
+        contestId: contestId || null,
+        classroomId: classroomId || null,
+        startDate: startDate || null,
+        endDate: endDate || null
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting all submission status statistics:', error);
     return response.sendError(res, error);
   }
 };
