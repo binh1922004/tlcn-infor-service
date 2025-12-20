@@ -3,7 +3,7 @@ import classroomModel from "../../models/classroom.model.js";
 import problemModel from "../../models/problem.models.js";
 import submissionModel from "../../models/submission.model.js";
 import materialModel from "../../models/material.model.js";
-
+import cron from 'node-cron';
 /**
  * Tạo lớp học mới
  */
@@ -16,6 +16,52 @@ export const createClassroom = async (req, res, next) => {
       return response.sendError(res, 'Tên lớp học là bắt buộc', 400);
     }
 
+    if (settings) {
+      let { startDate, endDate } = settings;
+      
+      startDate = startDate === "" ? null : startDate;
+      endDate = endDate === "" ? null : endDate;
+      
+      // Validate startDate format (nếu có giá trị)
+      if (startDate) {
+        const start = new Date(startDate);
+        if (isNaN(start.getTime())) {
+          return response.sendError(res, 'Ngày bắt đầu không hợp lệ', 400);
+        }
+      }
+
+      // Validate endDate format (nếu có giá trị)
+      if (endDate) {
+        const end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          return response.sendError(res, 'Ngày kết thúc không hợp lệ', 400);
+        }
+      }
+
+      // Validate startDate < endDate (chỉ khi cả 2 đều có giá trị)
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        if (start >= end) {
+          return response.sendError(res, 'Ngày kết thúc phải sau ngày bắt đầu', 400);
+        }
+      }
+
+      // Validate endDate không được trong quá khứ (nếu có giá trị)
+      if (endDate) {
+        const end = new Date(endDate);
+        const now = new Date();
+        
+        if (end < now) {
+          return response.sendError(res, 'Ngày kết thúc không được trong quá khứ', 400);
+        }
+      }
+
+      settings.startDate = startDate;
+      settings.endDate = endDate;
+    }
+
     const classCode = await classroomModel.generateClassCodeFromName(className);
     const inviteCode = await classroomModel.generateInviteCode();
 
@@ -25,7 +71,13 @@ export const createClassroom = async (req, res, next) => {
       className,
       description,
       owner: userId,
-      settings: settings || {}
+      settings: {
+        allowSelfEnroll: settings?.allowSelfEnroll ?? true,
+        showLeaderboard: settings?.showLeaderboard ?? true,
+        allowDiscussion: settings?.allowDiscussion ?? true,
+        startDate: settings?.startDate || null,
+        endDate: settings?.endDate || null
+      }
     });
 
     await classroom.save();
@@ -264,11 +316,69 @@ export const updateClassroom = async (req, res, next) => {
     const updates = req.body;
     const classroom = req.classroom;
 
+    // ✅ Validate settings dates nếu có update
+    if (updates.settings) {
+      let { startDate, endDate } = updates.settings;
+      
+      // ✅ Convert empty string to null
+      startDate = startDate === "" ? null : startDate;
+      endDate = endDate === "" ? null : endDate;
+      
+      const currentSettings = classroom.settings || {};
+      
+      // Get final dates (merge current with updates)
+      const finalStartDate = startDate !== undefined ? startDate : currentSettings.startDate;
+      const finalEndDate = endDate !== undefined ? endDate : currentSettings.endDate;
+
+      // Validate startDate format (nếu có giá trị)
+      if (startDate !== undefined && startDate !== null) {
+        const start = new Date(startDate);
+        if (isNaN(start.getTime())) {
+          return response.sendError(res, 'Ngày bắt đầu không hợp lệ', 400);
+        }
+      }
+
+      // Validate endDate format (nếu có giá trị)
+      if (endDate !== undefined && endDate !== null) {
+        const end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          return response.sendError(res, 'Ngày kết thúc không hợp lệ', 400);
+        }
+      }
+
+      // Validate startDate < endDate (chỉ khi cả 2 đều có giá trị)
+      if (finalStartDate && finalEndDate) {
+        const start = new Date(finalStartDate);
+        const end = new Date(finalEndDate);
+        
+        if (start >= end) {
+          return response.sendError(res, 'Ngày kết thúc phải sau ngày bắt đầu', 400);
+        }
+      }
+
+      // Nếu lớp học đang active, không cho set endDate trong quá khứ
+      if (classroom.status === 'active' && finalEndDate) {
+        const end = new Date(finalEndDate);
+        const now = new Date();
+        
+        if (end < now) {
+          return response.sendError(res, 'Ngày kết thúc không được trong quá khứ cho lớp học đang hoạt động', 400);
+        }
+      }
+
+      // ✅ Update settings với giá trị đã normalize
+      updates.settings.startDate = startDate;
+      updates.settings.endDate = endDate;
+    }
+
     const allowedFields = ['className', 'description', 'settings', 'status', 'thumbnail'];
     allowedFields.forEach(field => {
       if (updates[field] !== undefined) {
         if (field === 'settings') {
-          classroom.settings = { ...classroom.settings, ...updates.settings };
+          classroom.settings = { 
+            ...classroom.settings, 
+            ...updates.settings 
+          };
         } else {
           classroom[field] = updates[field];
         }
@@ -321,6 +431,146 @@ export const regenerateInviteCode = async (req, res, next) => {
   }
 };
 
+/**
+ * Đóng lớp học thủ công
+ */
+export const closeClassroom = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+
+    if (classroom.status === 'closed') {
+      return response.sendError(res, 'Lớp học đã được đóng', 400);
+    }
+
+    if (classroom.status === 'archived') {
+      return response.sendError(res, 'Không thể đóng lớp học đã được lưu trữ', 400);
+    }
+
+    classroom.status = 'closed';
+    await classroom.save();
+
+    return response.sendSuccess(res, { classroom }, 'Đóng lớp học thành công');
+  } catch (error) {
+    console.error('Error closing classroom:', error);
+    return response.sendError(res, 'Lỗi server', 500);
+  }
+};
+
+/**
+ * Archive lớp học (chỉ có thể archive lớp đã đóng)
+ */
+export const archiveClassroom = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+
+    if (classroom.status === 'active') {
+      return response.sendError(res, 'Không thể lưu trữ lớp học đang hoạt động. Vui lòng đóng lớp học trước.', 400);
+    }
+
+    if (classroom.status === 'archived') {
+      return response.sendError(res, 'Lớp học đã được lưu trữ', 400);
+    }
+
+    classroom.status = 'archived';
+    await classroom.save();
+
+    return response.sendSuccess(res, { classroom }, 'Lưu trữ lớp học thành công');
+  } catch (error) {
+    console.error('Error archiving classroom:', error);
+    return response.sendError(res, 'Lỗi server', 500);
+  }
+};
+
+/**
+ * Mở lại lớp học (từ closed về active)
+ */
+export const reopenClassroom = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+
+    if (classroom.status === 'active') {
+      return response.sendError(res, 'Lớp học đang hoạt động', 400);
+    }
+
+    if (classroom.status === 'archived') {
+      return response.sendError(res, 'Không thể mở lại lớp học đã được lưu trữ', 400);
+    }
+
+    // Kiểm tra xem có endDate và đã hết hạn chưa
+    if (classroom.settings?.endDate && new Date() > classroom.settings.endDate) {
+      return response.sendError(
+        res, 
+        'Không thể mở lại lớp học đã hết hạn. Vui lòng cập nhật thời gian kết thúc trước.', 
+        400
+      );
+    }
+
+    classroom.status = 'active';
+    await classroom.save();
+
+    return response.sendSuccess(res, { classroom }, 'Mở lại lớp học thành công');
+  } catch (error) {
+    console.error('Error reopening classroom:', error);
+    return response.sendError(res, 'Lỗi server', 500);
+  }
+};
+
+/**
+ * Khôi phục lớp học từ archived về closed
+ */
+export const restoreClassroom = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+
+    if (classroom.status !== 'archived') {
+      return response.sendError(res, 'Chỉ có thể khôi phục lớp học đã được lưu trữ', 400);
+    }
+
+    classroom.status = 'closed';
+    await classroom.save();
+
+    return response.sendSuccess(res, { classroom }, 'Khôi phục lớp học thành công');
+  } catch (error) {
+    console.error('Error restoring classroom:', error);
+    return response.sendError(res, 'Lỗi server', 500);
+  }
+};
+
+/**
+ * Kiểm tra và tự động đóng lớp học nếu đã hết hạn
+ */
+export const checkClassroomStatus = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+    
+    const wasClosed = await classroom.autoCloseIfExpired();
+    
+    const status = {
+      currentStatus: classroom.status,
+      isExpired: classroom.isExpired(),
+      endDate: classroom.settings?.endDate,
+      autoClosedNow: wasClosed
+    };
+    
+    if (wasClosed) {
+      return response.sendSuccess(
+        res, 
+        { classroom, status }, 
+        'Lớp học đã được tự động đóng do hết hạn'
+      );
+    }
+    
+    return response.sendSuccess(
+      res, 
+      { classroom, status }, 
+      'Thông tin trạng thái lớp học'
+    );
+  } catch (error) {
+    console.error('Error checking classroom status:', error);
+    return response.sendError(res, 'Lỗi server', 500);
+  }
+};
+
 export default {
   createClassroom,
   getClassrooms,
@@ -328,5 +578,10 @@ export default {
   getClassroomByClassCode,
   updateClassroom,
   deleteClassroom,
-  regenerateInviteCode
+  regenerateInviteCode,
+  closeClassroom,
+  archiveClassroom,
+  reopenClassroom,
+  restoreClassroom,
+  checkClassroomStatus
 };

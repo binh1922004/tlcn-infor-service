@@ -4,6 +4,7 @@ import connectDB from "../config/db.js";
 import addShortId from "./migration/addShortId.js";
 import {setupKafkaConsumers} from "./service/kafka.service.js";
 import {setupSocket} from "./socket/socket.js";
+import startClassroomAutoCloseJob from "./jobs/classroom.job.js";
 const migrateProblems = async () => {
   await addShortId();
 }
@@ -16,6 +17,13 @@ const startServer = async () => {
   });
   setupSocket();
   await setupKafkaConsumers();
+
+  if (config.enable_cron_jobs !== 'false') {
+    console.log(' Starting scheduled jobs...');
+    startClassroomAutoCloseJob();
+  } else {
+    console.log(' Cron jobs are disabled');
+  }
 };
 await migrateProblems()
 startServer();
