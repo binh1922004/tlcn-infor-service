@@ -8,10 +8,22 @@ import { getLatestContestParticipant } from "../service/contest.service.js";
 import problemModels from "../models/problem.models.js";
 import {populate} from "dotenv";
 import {Status} from "../utils/statusType.js";
+const languages = ["cpp", "python", "java", "js", "c", "csharp", "ruby", "go", "swift"];
+
+function verifySubmission(body) {
+    if (!body.source || body.source.trim() === "") {
+      throw new Error("Source code cannot be empty");
+    }
+    if (!body.language || !languages.includes(body.language)) {
+      throw new Error("Language cannot be empty");
+    }
+}
+
 export const submitProblem = async (req, res) => {
   try {
     const id = req.user._id;
     let body = req.body;
+    verifySubmission(body);
     body.source = body.source.trim();
     body.problem = req.params.id;
     body.user = id;
@@ -66,7 +78,7 @@ export const submitProblem = async (req, res) => {
     let submission = await SubmissionModel.create(body);
     submission = await submission.populate(
       "problem",
-      "numberOfTestCases time memory"
+      "numberOfTestCases time memory version "
     );
     // body.
     await sendMessage("submission-topic", submission);
