@@ -33,10 +33,12 @@ export const uploadProblemTestcases = async (req, res) => {
         const data = await customZipProcessor.processZipFromBuffer(req.file.buffer,
             req.file.originalname,
             S3_PROBLEM_PREFIX(problemId),
-            problemId);
+            problemId,
+            problem.version + 1);
         //update problem status and noOfTestcases
         problem.numberOfTestCases = data.summary.totalFolders;
         problem.isActive = true;
+        problem.version = problem.version + 1;
         problem.zipName = req.file.originalname;
         await problemModels.updateOne({ _id: problemId }, problem);
         return response.sendSuccess(res, data, 'success');
