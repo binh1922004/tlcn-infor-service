@@ -41,7 +41,7 @@ export const mapToContestDto = (contest) => {
             _id: contest.classRoom._id,
             className: contest.classRoom.className,
             classCode: contest.classRoom.classCode
-        } : null
+        } : null,
         noOfParticipants: contest.noOfParticipants,
         duration: contest.duration,
     }

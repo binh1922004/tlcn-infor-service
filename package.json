@@ -25,6 +25,7 @@
     "express": "^5.1.0",
     "googleapis": "^159.0.0",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
     "kafkajs": "^2.2.4",
     "lowdb": "^7.0.1",
     "moment-timezone": "^0.6.0",

@@ -29,7 +29,8 @@ const problemSchema = new mongoose.Schema({
         ref:"User",
         default:null,
         index: true
-    }
+    },
+    version: {type: Number, default: 0},
 }, {
     timestamps: true, //auto generate createAt and updateAtm
     strict: true
