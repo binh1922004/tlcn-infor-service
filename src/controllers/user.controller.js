@@ -34,6 +34,7 @@ export const getProfileByUserName = async (req, res, next) => {
       email: user.email,
       avatar: user.avatar,
       active: user.active,
+      School: user.School,
       role: user.role,
       isOwner: req.user?.userName != null && user.userName === req.user?.userName,
       dob: user.dob,
