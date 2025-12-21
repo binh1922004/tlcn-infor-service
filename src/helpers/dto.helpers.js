@@ -51,7 +51,7 @@ export const mapToContestDto = (contest) => {
 export const mapToContestParticipantDto = (participant) => {
     return {
         id: participant._id,
-        user: participant.userId,
+        user: participant.userId || participant.user,
         contestId: participant.contestId,
         joinedAt: convertToUTC7(participant.joinedAt),
         mode: participant.mode,
@@ -60,6 +60,7 @@ export const mapToContestParticipantDto = (participant) => {
         score: participant.score,
         isRegistered: participant.isRegistered,
         isStarted: participant.isStarted,
+        isDisqualified: participant.isDisqualified,
         problemScores: participant.problemScores,
         lastBestSubmissionScoreAt: convertToUTC7(participant.lastBestSubmissionScoreAt),
     }
