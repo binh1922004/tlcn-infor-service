@@ -14,7 +14,9 @@ import UserNotificationPreference from '../models/userNotificationPreference.mod
 export const getBroadcasts = async (req, res) => {
     try {
         const userId = req.user._id;
-        const { lastSeenAt, limit = 20, type } = req.query;
+        const { lastSeenAt, type } = req.query;
+        const page = Math.max(1, parseInt(req.query.page || '1', 10));
+        const limit = Math.min(50, parseInt(req.query.limit || '10', 10));
 
         // Get user preferences
         const preference = await UserNotificationPreference.findOne({ userId }).lean();
@@ -34,13 +36,28 @@ export const getBroadcasts = async (req, res) => {
             filter.type = type;
         }
 
+        // Đếm tổng số broadcasts
+        const total = await BroadcastNotificationModel.countDocuments(filter);
+        
+        // Tính skip cho pagination
+        const skip = (page - 1) * limit;
+
+        // Lấy broadcasts với pagination
         const broadcasts = await BroadcastNotificationModel.find(filter)
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit))
+            .skip(skip)
+            .limit(limit)
             .lean();
 
         return response.sendSuccess(res, {
             broadcasts,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+                hasMore: skip + broadcasts.length < total
+            },
             lastSeenAt: preference?.lastSeenBroadcastAt || new Date()
         });
     } catch (error) {
