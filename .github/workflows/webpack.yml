@@ -27,5 +27,10 @@ jobs:
       env: 
         CI: true
         MONGODB_URI: ${{ secrets.MONGODB_URI }}
-      run: node src/server.js
+      run: 
+        node src/server.js &
+        SERVER_PID=$!
+        sleep 5
+        curl -f http://localhost:8080/health
+        kill $SERVER_PID
       
