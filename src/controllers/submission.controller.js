@@ -6,10 +6,24 @@ import mongoose from "mongoose";
 import contestParticipantModel from "../models/contestParticipant.model.js";
 import { getLatestContestParticipant } from "../service/contest.service.js";
 import problemModels from "../models/problem.models.js";
+import {populate} from "dotenv";
+import {Status} from "../utils/statusType.js";
+const languages = ["cpp", "python", "java", "js", "c", "csharp", "ruby", "go", "swift"];
+
+function verifySubmission(body) {
+    if (!body.source || body.source.trim() === "") {
+      throw new Error("Source code cannot be empty");
+    }
+    if (!body.language || !languages.includes(body.language)) {
+      throw new Error("Language cannot be empty");
+    }
+}
+
 export const submitProblem = async (req, res) => {
   try {
     const id = req.user._id;
     let body = req.body;
+    verifySubmission(body);
     body.source = body.source.trim();
     body.problem = req.params.id;
     body.user = id;
@@ -34,13 +48,15 @@ export const submitProblem = async (req, res) => {
         body.contest,
         id
       );
-      console.log(latestParticipation);
       if (!latestParticipation) {
         return response.sendError(
           res,
           "You are not allowed to submit to this contest",
           403
         );
+      }
+      if (latestParticipation.isDisqualified) {
+        return response.sendError(res, "You are not allowed to submit to this contest", 403);
       }
       const now = new Date();
       if (
@@ -64,7 +80,7 @@ export const submitProblem = async (req, res) => {
     let submission = await SubmissionModel.create(body);
     submission = await submission.populate(
       "problem",
-      "numberOfTestCases time memory"
+      "numberOfTestCases time memory version "
     );
     // body.
     await sendMessage("submission-topic", submission);
@@ -118,8 +134,9 @@ export const getSubmissionsByUserId = async (req, res) => {
     const submissions = await SubmissionModel.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
-
+      .limit(limit)
+      .populate("user", "userName")
+      .populate("problem", "name");
     const total = await SubmissionModel.countDocuments(filter);
     // sendMessageToUser(userId, 'submission-update', submissions)
     return response.sendSuccess(res, pageDTO(submissions, total, page, limit));
@@ -129,9 +146,52 @@ export const getSubmissionsByUserId = async (req, res) => {
   }
 };
 
+export const getBestSubmissionByUserId = async (req, res) => {
+  try {
+    const userId = req.params.id; 
+    const { problemId, classroomId, excludeClassroom } = req.query;
+
+    console.log('📥 Getting best submission:', { userId, problemId, classroomId, excludeClassroom });
+
+    // Validate required params
+    if (!problemId) {
+      return response.sendError(res, "Problem ID is required", 400);
+    }
+
+    const filter = {
+      user: userId,
+      problem: problemId,
+      status: Status.AC,
+    };
+
+    // Apply classroom filter
+    if (classroomId) {
+      filter.classroom = classroomId;
+    } else if (excludeClassroom === 'true') {
+      filter.classroom = null;
+    }
+
+    // Find best submission (lowest time, then lowest memory)
+    const bestSubmission = await SubmissionModel.findOne(filter)
+      .sort({ time: 1, memory: 1, createdAt: -1 }) // Sort by time ASC, memory ASC, newest first
+      .populate("user", "userName fullName avatar")
+      .populate("problem", "name shortId");
+
+    if (!bestSubmission) {
+      return response.sendError(res, "No accepted submission found", 404);
+    }
+
+    console.log('✅ Best submission found:', bestSubmission.shortId);
+    return response.sendSuccess(res, bestSubmission);
+  } catch (error) {
+    console.error('❌ Get best submission error:', error);
+    return response.sendError(res, error);
+  }
+};
+
 export const getSubmission = async (req, res) => {
   try {
-    const { userId, problemId } = req.query;
+    const { userId, problemId, contestId, status } = req.query;
     const { limit = 10, page = 1, language } = req.query;
     const skip = (page - 1) * limit;
 
@@ -149,13 +209,23 @@ export const getSubmission = async (req, res) => {
       filter.language = language;
     }
 
+    if (contestId){
+      filter.contest = contestId;
+    }
+
+    if (status){
+        filter.status = status;
+    }
+
     const submissions = await SubmissionModel.find(filter)
+        .populate("user", "userName")
+        .populate("problem", "name")
+        .populate('contest', 'name code')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
     const total = await SubmissionModel.countDocuments(filter);
-    console.log(total);
     return response.sendSuccess(res, pageDTO(submissions, total, page, limit));
   } catch (error) {
     console.log(error);
@@ -166,7 +236,19 @@ export const getSubmission = async (req, res) => {
 export const getSubmissionById = async (req, res) => {
   try {
     const id = req.params.id;
-    const submission = await SubmissionModel.findById(id);
+    const submission = await SubmissionModel.findById(id)
+        .populate("user", "userName")
+        .populate("problem", "name shortId")
+        .populate('contest', 'title code');
+    if (!submission) {
+        return response.sendError(res, "Submission not found", 404);
+    }
+    const user = req.user;
+    if (submission.isPrivate) {
+      if (!user || (user._id.toString() !== submission.user._id.toString() && user.role !== 'admin')) {
+        return response.sendError(res, "You are not allowed to view this submission", 403);
+      }
+    }
     return response.sendSuccess(res, submission);
   } catch (error) {
     console.log(error);
@@ -329,6 +411,461 @@ export const getSubmissionDifficultyChart = async (req, res) => {
     return response.sendSuccess(res, { chart: statusCounts, total: cnt });
   } catch (error) {
     console.log(error);
+    return response.sendError(res, error);
+  }
+};
+
+
+export const getSubmissionStatistics = async (req, res) => {
+    try {
+        const totalSubmissions = await SubmissionModel.countDocuments();
+        const acSubmissions = await SubmissionModel.countDocuments({ status: Status.AC });
+        const waSubmission = await SubmissionModel.countDocuments({ status: Status.WA });
+        const otherSubmission = totalSubmissions - (acSubmissions + waSubmission);
+        return response.sendSuccess(res, {
+            totalSubmissions,
+            acSubmissions,
+            waSubmission,
+            otherSubmission,
+        });
+    }
+    catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}
+
+export const getSubmissionsByClassroom = async (req, res) => {
+  try {
+    const classroom = req.classroom;
+    
+    // Get query params for filtering
+    const { 
+      userId, 
+      problemId, 
+      contestId, 
+      status,
+      language,
+      limit = 20, 
+      page = 1 
+    } = req.query;
+    
+    const skip = (page - 1) * limit;
+
+    let filter = {
+      classroom: classroom._id
+    };
+
+    // Apply additional filters
+    if (userId) {
+      filter.user = userId;
+    }
+
+    if (problemId) {
+      filter.problem = problemId;
+    }
+
+    if (contestId) {
+      filter.contest = contestId;
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (language && language !== "all") {
+      filter.language = language;
+    }
+
+    // Get submissions with pagination
+    const submissions = await SubmissionModel.find(filter)
+      .populate("user", "userName fullName email studentCode avatar")
+      .populate("problem", "name shortId difficulty")
+      .populate("contest", "title code")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await SubmissionModel.countDocuments(filter);
+
+
+    return response.sendSuccess(res, pageDTO(submissions, total, page, limit));
+  } catch (error) {
+    console.error('❌ Get classroom submissions error:', error);
+    return response.sendError(res, error);
+  }
+};
+export const getClassroomSubmissionStatistics = async (req, res) => {
+  try {
+    // ✅ classroom already loaded and verified by verifyClassroomTeacher middleware
+    const classroom = req.classroom;
+    const classroomId = classroom._id;
+
+    // Get filter params
+    const { userId, problemId, contestId } = req.query;
+
+    // Base filter for classroom
+    let filter = {
+      classroom: classroomId
+    };
+
+    // Apply additional filters
+    if (userId) {
+      filter.user = userId;
+    }
+
+    if (problemId) {
+      filter.problem = problemId;
+    }
+
+    if (contestId) {
+      filter.contest = contestId;
+    }
+
+    // Count total submissions
+    const totalSubmissions = await SubmissionModel.countDocuments(filter);
+
+    // Count AC submissions
+    const acSubmissions = await SubmissionModel.countDocuments({
+      ...filter,
+      status: Status.AC
+    });
+
+    // Count WA submissions
+    const waSubmissions = await SubmissionModel.countDocuments({
+      ...filter,
+      status: Status.WA
+    });
+
+    // Count TLE submissions
+    const tleSubmissions = await SubmissionModel.countDocuments({
+      ...filter,
+      status: Status.TLE
+    });
+
+    // Count MLE submissions
+    const mleSubmissions = await SubmissionModel.countDocuments({
+      ...filter,
+      status: Status.MLE
+    });
+
+    // Count RE submissions
+    const reSubmissions = await SubmissionModel.countDocuments({
+      ...filter,
+      status: Status.RE
+    });
+
+    // Count CE submissions
+    const ceSubmissions = await SubmissionModel.countDocuments({
+      ...filter,
+      status: Status.CE
+    });
+
+    // Count Pending submissions
+    const pendingSubmissions = await SubmissionModel.countDocuments({
+      ...filter,
+      status: Status.Pending
+    });
+
+    // Calculate other submissions
+    const otherSubmissions = totalSubmissions - (
+      acSubmissions + 
+      waSubmissions + 
+      tleSubmissions + 
+      mleSubmissions + 
+      reSubmissions + 
+      ceSubmissions + 
+      pendingSubmissions
+    );
+
+    // Get unique users count (students who submitted)
+    const uniqueUsers = await SubmissionModel.distinct('user', filter);
+    const activeStudents = uniqueUsers.length;
+
+    // Get unique problems count
+    const uniqueProblems = await SubmissionModel.distinct('problem', filter);
+    const problemsAttempted = uniqueProblems.length;
+
+    // Calculate acceptance rate
+    const acceptanceRate = totalSubmissions > 0 
+      ? ((acSubmissions / totalSubmissions) * 100).toFixed(2) 
+      : 0;
+
+    console.log(`✅ Statistics for classroom ${classroom.classCode}:`, {
+      totalSubmissions,
+      acSubmissions,
+      activeStudents
+    });
+
+    return response.sendSuccess(res, {
+      classroom: {
+        _id: classroom._id,
+        classCode: classroom.classCode,
+        className: classroom.className
+      },
+      totalSubmissions,
+      acSubmissions,
+      waSubmissions,
+      tleSubmissions,
+      mleSubmissions,
+      reSubmissions,
+      ceSubmissions,
+      pendingSubmissions,
+      otherSubmissions,
+      activeStudents,
+      problemsAttempted,
+      acceptanceRate: parseFloat(acceptanceRate)
+    });
+  } catch (error) {
+    console.error('❌ Get classroom submission statistics error:', error);
+    return response.sendError(res, error);
+  }
+};
+export const getAllSubmissionStatusStatistics = async (req, res) => {
+  try {
+    // Get filter params (optional)
+    const { userId, problemId, contestId, classroomId, startDate, endDate } = req.query;
+
+    // Build base filter
+    let filter = {};
+
+    // Apply filters if provided
+    if (userId) {
+      filter.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    if (problemId) {
+      filter.problem = new mongoose.Types.ObjectId(problemId);
+    }
+
+    if (contestId) {
+      filter.contest = new mongoose.Types.ObjectId(contestId);
+    }
+
+    if (classroomId) {
+      filter.classroom = new mongoose.Types.ObjectId(classroomId);
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) {
+        filter.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        filter.createdAt.$lte = new Date(endDate);
+      }
+    }
+
+    // Count total submissions
+    const totalSubmissions = await SubmissionModel.countDocuments(filter);
+
+    // Get status counts using aggregation
+    const statusCounts = await SubmissionModel.aggregate([
+      {
+        $match: filter
+      },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          status: "$_id",
+          count: 1
+        }
+      },
+      {
+        $sort: { count: -1 } // Sort by count descending
+      }
+    ]);
+
+    // Create status map for easy access
+    const statusMap = {};
+    statusCounts.forEach(item => {
+      statusMap[item.status] = item.count;
+    });
+
+    // Define all possible statuses with their counts
+    const allStatuses = {
+      [Status.AC]: statusMap[Status.AC] || 0,
+      [Status.WA]: statusMap[Status.WA] || 0,
+      [Status.TLE]: statusMap[Status.TLE] || 0,
+      [Status.MLE]: statusMap[Status.MLE] || 0,
+      [Status.RE]: statusMap[Status.RE] || 0,
+      [Status.CE]: statusMap[Status.CE] || 0,
+      [Status.Pending]: statusMap[Status.Pending] || 0,
+      [Status.IE]: statusMap[Status.IE] || 0,
+    };
+
+    // Calculate percentages
+    const statusPercentages = {};
+    Object.keys(allStatuses).forEach(status => {
+      statusPercentages[status] = totalSubmissions > 0
+        ? ((allStatuses[status] / totalSubmissions) * 100).toFixed(2)
+        : "0.00";
+    });
+
+    // Calculate acceptance rate
+    const acceptedCount = allStatuses[Status.AC];
+    const acceptanceRate = totalSubmissions > 0
+      ? ((acceptedCount / totalSubmissions) * 100).toFixed(2)
+      : "0.00";
+
+    // Get additional statistics
+    const uniqueUsers = await SubmissionModel.distinct('user', filter);
+    const uniqueProblems = await SubmissionModel.distinct('problem', filter);
+
+    // Get average submission time (for accepted submissions)
+    const avgTimeResult = await SubmissionModel.aggregate([
+      {
+        $match: {
+          ...filter,
+          status: Status.AC,
+          time: { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgTime: { $avg: "$time" },
+          maxTime: { $max: "$time" },
+          minTime: { $min: "$time" }
+        }
+      }
+    ]);
+
+    const timeStats = avgTimeResult.length > 0
+      ? {
+          average: Math.round(avgTimeResult[0].avgTime),
+          max: avgTimeResult[0].maxTime,
+          min: avgTimeResult[0].minTime
+        }
+      : {
+          average: 0,
+          max: 0,
+          min: 0
+        };
+
+    // Get average memory (for accepted submissions)
+    const avgMemoryResult = await SubmissionModel.aggregate([
+      {
+        $match: {
+          ...filter,
+          status: Status.AC,
+          memory: { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgMemory: { $avg: "$memory" },
+          maxMemory: { $max: "$memory" },
+          minMemory: { $min: "$memory" }
+        }
+      }
+    ]);
+
+    const memoryStats = avgMemoryResult.length > 0
+      ? {
+          average: Math.round(avgMemoryResult[0].avgMemory),
+          max: avgMemoryResult[0].maxMemory,
+          min: avgMemoryResult[0].minMemory
+        }
+      : {
+          average: 0,
+          max: 0,
+          min: 0
+        };
+
+    // Get submissions by language
+    const languageStats = await SubmissionModel.aggregate([
+      {
+        $match: filter
+      },
+      {
+        $group: {
+          _id: "$language",
+          count: { $sum: 1 },
+          accepted: {
+            $sum: { $cond: [{ $eq: ["$status", Status.AC] }, 1, 0] }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          language: "$_id",
+          total: "$count",
+          accepted: 1,
+          acceptanceRate: {
+            $cond: [
+              { $gt: ["$count", 0] },
+              { $multiply: [{ $divide: ["$accepted", "$count"] }, 100] },
+              0
+            ]
+          }
+        }
+      },
+      {
+        $sort: { total: -1 }
+      }
+    ]);
+
+
+    return response.sendSuccess(res, {
+      total: totalSubmissions,
+      acceptanceRate: parseFloat(acceptanceRate),
+      
+      // Status counts
+      statusCounts: allStatuses,
+      
+      // Status percentages
+      statusPercentages: Object.keys(statusPercentages).reduce((acc, key) => {
+        acc[key] = parseFloat(statusPercentages[key]);
+        return acc;
+      }, {}),
+      
+      // Detailed status breakdown
+      statusBreakdown: statusCounts,
+      
+      // User and problem statistics
+      statistics: {
+        uniqueUsers: uniqueUsers.length,
+        uniqueProblems: uniqueProblems.length,
+        averageSubmissionsPerUser: uniqueUsers.length > 0
+          ? (totalSubmissions / uniqueUsers.length).toFixed(2)
+          : "0.00",
+        averageSubmissionsPerProblem: uniqueProblems.length > 0
+          ? (totalSubmissions / uniqueProblems.length).toFixed(2)
+          : "0.00"
+      },
+      
+      // Performance statistics (for AC submissions)
+      performance: {
+        time: timeStats,
+        memory: memoryStats
+      },
+      
+      // Language statistics
+      languageStatistics: languageStats,
+      
+      // Applied filters
+      filters: {
+        userId: userId || null,
+        problemId: problemId || null,
+        contestId: contestId || null,
+        classroomId: classroomId || null,
+        startDate: startDate || null,
+        endDate: endDate || null
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting all submission status statistics:', error);
     return response.sendError(res, error);
   }
 };

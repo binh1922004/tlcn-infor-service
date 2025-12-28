@@ -37,6 +37,13 @@ export const mapToContestDto = (contest) => {
         code: contest.code,
         isRegistered: contest.isRegistered,
         noOfSolved: contest.noOfSolved,
+        classRoom: contest.classRoom ? {
+            _id: contest.classRoom._id,
+            className: contest.classRoom.className,
+            classCode: contest.classRoom.classCode
+        } : null,
+        noOfParticipants: contest.noOfParticipants,
+        duration: contest.duration,
     }
 }
 
@@ -44,7 +51,7 @@ export const mapToContestDto = (contest) => {
 export const mapToContestParticipantDto = (participant) => {
     return {
         id: participant._id,
-        user: participant.userId,
+        user: participant.userId || participant.user,
         contestId: participant.contestId,
         joinedAt: convertToUTC7(participant.joinedAt),
         mode: participant.mode,
@@ -53,6 +60,7 @@ export const mapToContestParticipantDto = (participant) => {
         score: participant.score,
         isRegistered: participant.isRegistered,
         isStarted: participant.isStarted,
+        isDisqualified: participant.isDisqualified,
         problemScores: participant.problemScores,
         lastBestSubmissionScoreAt: convertToUTC7(participant.lastBestSubmissionScoreAt),
     }

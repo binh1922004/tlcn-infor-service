@@ -23,16 +23,18 @@ const problemSchema = new mongoose.Schema({
     zipName: {type: String, default: null},
     shortId: { type: String, default: () => randomString() },
     classRoom: {type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null, index: true},
+    isContestInClassroom: {type: Boolean, default: false, index: true},
     createBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref:"User",
         default:null,
         index: true
-    }
+    },
+    version: {type: Number, default: 0},
 }, {
     timestamps: true, //auto generate createAt and updateAtm
     strict: true
 })
 problemSchema.index({ classRoom: 1, isActive: 1 });
-
+problemSchema.index({ classRoom: 1, isActive: 1, isContestInClassroom: 1 });
 export default mongoose.model('Problem', problemSchema);

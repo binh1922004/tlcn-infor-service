@@ -1,6 +1,6 @@
 import * as authController from "../controllers/auth.controller.js";
 import express from 'express';
-import { forgotPasswordSendOtp, forgotPasswordVerifyOtp, resetPassword } from "../controllers/forgotPassword.controller.js";
+import { forgotPasswordSendOtp, forgotPasswordVerifyOtp, resetPassword, resendForgotPasswordOtp } from "../controllers/forgotPassword.controller.js";
 import { verifyOtpRegister, resendOtpRegister } from "../controllers/otp.controller.js";
 import {authenticateToken} from "../middlewares/auth.middleware.js";
 import {onboarding} from "../controllers/auth.controller.js";
@@ -27,5 +27,5 @@ router.post("/register/verify-otp", verifyOtpRegister);
 router.post("/forgot-password/send-otp", forgotPasswordSendOtp);
 router.post("/forgot-password/verify-otp", forgotPasswordVerifyOtp);
 router.post("/forgot-password/reset", resetPassword);
-
+router.post("/forgot-password/resend-otp", resendForgotPasswordOtp); 
 export default router

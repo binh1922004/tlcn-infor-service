@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import crypto from "crypto";
 const classroomSchema = new mongoose.Schema(
   {
-    // Mã lớp học (dùng cho join class) - Format: PREFIX-YY-XXXX
     classCode: {
       type: String,
       unique: true,
@@ -39,7 +38,6 @@ const classroomSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Người tạo/quản lý lớp (teacher hoặc admin)
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -47,7 +45,6 @@ const classroomSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Danh sách giáo viên phụ (nếu có)
     teachers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -103,7 +100,6 @@ const classroomSchema = new mongoose.Schema(
       },
     ],
 
-    // Danh sách bài tập trong lớp - SỬ DỤNG shortId
     problems: [
       {
         problemShortId: {
@@ -134,7 +130,6 @@ const classroomSchema = new mongoose.Schema(
       },
     ],
 
-    // ===== THÊM MỚI: Invite Tokens cho email invitations =====
     inviteTokens: [
       {
         token: {
@@ -202,12 +197,33 @@ const classroomSchema = new mongoose.Schema(
       startDate: {
         type: Date,
         default: null,
+        validate: {
+          validator: function(value) {
+            // Nếu có endDate, startDate phải nhỏ hơn endDate
+            if (value && this.settings?.endDate) {
+              return value < this.settings.endDate;
+            }
+            return true;
+          },
+          message: 'Ngày bắt đầu phải trước ngày kết thúc'
+        }
       },
       // Thời gian kết thúc
       endDate: {
         type: Date,
         default: null,
-      },
+        validate: {
+          validator: function(value) {
+            // Nếu có startDate, endDate phải lớn hơn startDate
+            if (value && this.settings?.startDate) {
+              return value > this.settings.startDate;
+            }
+            return true;
+          },
+          message: 'Ngày kết thúc phải sau ngày bắt đầu'
+        }
+      }
+  
     },
 
     // Trạng thái lớp học
@@ -369,7 +385,6 @@ classroomSchema.methods.getPendingInvites = function () {
   );
 };
 
-// ===== EXISTING METHODS =====
 
 /**
  * Tạo invite code ngẫu nhiên (6 ký tự)
@@ -674,6 +689,53 @@ classroomSchema.methods.getStudentAllProgress = function(userId) {
         p => p.userId.toString() === userId.toString()
     );
 };
+
+/**
+ * Kiểm tra xem lớp học đã hết hạn chưa
+ */
+classroomSchema.methods.isExpired = function() {
+  if (!this.settings?.endDate) {
+    return false;
+  }
+  return new Date() > this.settings.endDate;
+};
+
+/**
+ * Tự động đóng lớp học nếu đã hết hạn
+ */
+classroomSchema.methods.autoCloseIfExpired = async function() {
+  if (this.isExpired() && this.status === 'active') {
+    this.status = 'closed';
+    await this.save();
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Static method: Tìm các lớp học đã hết hạn
+ */
+classroomSchema.statics.findExpiredClassrooms = function() {
+  const now = new Date();
+  return this.find({
+    status: 'active',
+    'settings.endDate': { $lte: now }
+  });
+};
+classroomSchema.pre('validate', function(next) {
+  if (this.settings?.startDate && this.settings?.endDate) {
+    const start = new Date(this.settings.startDate);
+    const end = new Date(this.settings.endDate);
+    
+    if (start >= end) {
+      const error = new Error('Ngày kết thúc phải sau ngày bắt đầu');
+      error.name = 'ValidationError';
+      return next(error);
+    }
+  }
+  next();
+});
+
 
 // Ensure virtual fields are serialized
 classroomSchema.set("toJSON", { virtuals: true });

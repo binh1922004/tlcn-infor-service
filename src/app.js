@@ -13,6 +13,14 @@ import {config} from "../config/env.js";
 import adminContestRoutes from "./routes/admin.contest.routes.js";
 import contestRoutes from "./routes/contest.routes.js";
 import materialRoutes from './routes/material.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
+import broadcastRoutes from './routes/broadcast.routes.js';
+import adminSubmissionRoutes from "./routes/admin.submission.routes.js";
+import solutionRoutes from './routes/solution.routes.js';
+import teacherContestRoutes from './routes/teacher.contest.routes.js';
+import teacherSubmissionRoutes from './routes/teacher.submission.routes.js';
+import statisticsRoutes from './routes/statistics.routes.js';
+import adminCommentRoutes from './routes/admin.comment.routes.js';
 console.log(config.fe_url)
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -44,12 +52,20 @@ app.use('/api/users', userRoutes)
 app.use('/api/auth', authRoutes)
 app.use('/api/problems', problemRoutes)
 app.use('/api/submissions', submissionRoute)
-
+app.use('/api/statistics', statisticsRoutes);
 app.use('/api/posts', postRoutes)
 app.use('/api/upload/posts', uploadPostRoutes);
+
 app.use('/api/comments', commentRoutes);
 app.use('/api/contests', contestRoutes);
+app.use('/api/teacher/contests', teacherContestRoutes);
+app.use('/api/teacher/submissions', teacherSubmissionRoutes);
 app.use('/api/admin/contests', adminContestRoutes);
+app.use('/api/admin/submissions', adminSubmissionRoutes)
 app.use('/api/classroom', classroom);
 app.use('/api/classroom', materialRoutes); 
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/broadcasts', broadcastRoutes);
+app.use('/api/solutions', solutionRoutes);
+app.use('/api/admin/comments', adminCommentRoutes); 
 export default app;

@@ -1,9 +1,10 @@
 import yauzl from 'yauzl';
 import path from 'path';
+import JSZip from "jszip";
 import { uploadFile, getContentType } from '../service/s3.service.js';
 
 export class CustomZipProcessor {
-    async processZipFromBuffer(zipBuffer, originalFileName, s3Prefix = '', problemId) {
+    async processZipFromBuffer(zipBuffer, originalFileName, s3Prefix = '', problemId, version = 0) {
         try {
             // 1. Validate ZIP structure first
             const validation = await this.validateZipStructure(zipBuffer);
@@ -14,11 +15,11 @@ export class CustomZipProcessor {
             console.log(`✅ ZIP validation passed. Found ${validation.folderCount} folders with valid .in/.out files`);
 
             // 2. Upload original ZIP to S3
-            const zipS3Key = s3Prefix ? `${s3Prefix}/${originalFileName}` : originalFileName;
+            const zipS3Key = s3Prefix ? `${s3Prefix}/original_${originalFileName}` : 'original_' + originalFileName;
             await uploadFile(zipS3Key, zipBuffer, 'application/zip');
 
             // 3. Extract and restructure files
-            const processedFiles = await this.extractAndRestructure(zipBuffer, s3Prefix, problemId);
+            const processedFiles = await this.extractAndRestructure(zipBuffer, s3Prefix, problemId, version);
 
             return {
                 originalZip: {
@@ -157,12 +158,12 @@ export class CustomZipProcessor {
         });
     }
 
-    async extractAndRestructure(zipBuffer, s3Prefix = '', id) {
+    async extractAndRestructure(zipBuffer, s3Prefix = '', id, version) {
         return new Promise((resolve, reject) => {
             const uploadPromises = [];
             const folderMap = new Map(); // Map original folder names to sequential IDs
             let folderCounter = 1;
-
+            const newZip = new JSZip();
             yauzl.fromBuffer(zipBuffer, { lazyEntries: true }, (err, zipfile) => {
                 if (err) return reject(err);
 
@@ -210,27 +211,11 @@ export class CustomZipProcessor {
 
                             // Create new file structure: id/in/id_X.in or id/out/id_X.out
                             const fileType = fileExtension.substring(1); // Remove the dot
-                            const newFileName = `${id}_${folderId}${fileExtension}`;
+                            const newFileName = `${id + (version > 0 ? `-v${version}` : '')}_${folderId}${fileExtension}`;
                             const newPath = `${fileType}/${newFileName}`;
 
-                            const s3Key = s3Prefix ? `${s3Prefix}/${newPath}` : newPath;
-
-                            // Upload to S3 using your existing uploadFile function
-                            const uploadPromise = uploadFile(
-                                s3Key,
-                                fileBuffer,
-                                getContentType(fileExtension)
-                            ).then(result => ({
-                                originalPath: fileName,
-                                newPath: newPath,
-                                s3Key: s3Key,
-                                size: fileBuffer.length,
-                                folderId: folderId,
-                                fileType: fileType,
-                                uploadResult: result
-                            }));
-
-                            uploadPromises.push(uploadPromise);
+                            // uploadPromises.push(uploadPromise);
+                            newZip.file(newPath, fileBuffer);
                             zipfile.readEntry();
                         });
 
@@ -243,12 +228,17 @@ export class CustomZipProcessor {
 
                 zipfile.on('end', async () => {
                     try {
-                        const results = await Promise.all(uploadPromises);
-                        console.log(folderCounter)
-                        console.log(`✅ Restructured and uploaded ${results.length} files to S3`);
-                        console.log(`📁 Processed ${folderMap.size} folders with sequential IDs`);
+                        console.log('Zip all file after restructure');
+                        const restructuredZipBuffer = await newZip.generateAsync({
+                            type: 'nodebuffer',
+                            compression:  'DEFLATE',
+                            compressionOptions: { level: 6 }
+                        });
+                        const zipS3Key = s3Prefix ? `${s3Prefix}/${id}${version > 0 ? `-v${version}` : ''}.zip` : `${id}.zip`;
+                        await uploadFile(zipS3Key, restructuredZipBuffer, 'application/zip');
 
-                        resolve(results);
+                        console.log(`📁 Processed ${zipS3Key} to S3 with restructured files.`);
+                        resolve();
                     } catch (error) {
                         reject(error);
                     }

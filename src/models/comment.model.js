@@ -26,6 +26,14 @@ const commentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Comment'
   }],
+  isHidden: {
+    type: Boolean,
+    default: false
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
   likes: [{
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -36,6 +44,7 @@ const commentSchema = new mongoose.Schema({
       default: Date.now
     }
   }],
+  
   likesCount: {
     type: Number,
     default: 0
@@ -46,7 +55,13 @@ const commentSchema = new mongoose.Schema({
   },
   editedAt: {
     type: Date
-  }
+  },
+   hiddenBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  hiddenAt: Date,
+  hiddenReason: String,
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -446,6 +461,8 @@ commentSchema.pre('findOneAndDelete', async function(next) {
     next(error);
   }
 });
+
+
 
 
 const Comment = mongoose.model('Comment', commentSchema);

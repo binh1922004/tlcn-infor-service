@@ -4,10 +4,11 @@ import {authenticateToken, optionalAuth, verifyAdmin, verifyAdminOrOwner} from '
 import { uploadAvatar, getUserAvatar, deleteAvatar, getCurrentUserAvatar } from '../controllers/uploadAvatar.controller.js'
 import upload from '../middlewares/upload.middlewares.js'
 import userStatsRoutes from './userStats.routes.js';
+import {getMostSolvedUsers} from "../controllers/user.controller.js";
 const router = express.Router()
 
 router.get('/', authenticateToken, userController.getUsers)
-router.get('/profile/:username', optionalAuth, userController.getUserByUsername)
+router.get('/profile/:username', optionalAuth, userController.getProfileByUserName)
 router.put('/profile/update', authenticateToken, userController.updateUser) 
 // Routes upload avatar với Cloudinary
 router.post('/profile/avatar/upload', authenticateToken, upload.single('avatar'), uploadAvatar)
@@ -16,6 +17,7 @@ router.get('/profile/avatar/:userName', getUserAvatar)
 
 router.delete('/profile/avatar/:userName', authenticateToken, deleteAvatar)
 router.get('/username/check', userController.checkUsername)
+router.get('/rating', getMostSolvedUsers);
 
 // Thống kê và phân tích
 router.use('/admin/stats', userStatsRoutes);
