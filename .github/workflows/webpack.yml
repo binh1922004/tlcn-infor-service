@@ -30,7 +30,7 @@ jobs:
       run: 
         node src/server.js &
         SERVER_PID=$!
-        sleep 5
+        sleep 10
         curl -f http://localhost:8080/health
         kill $SERVER_PID
       
