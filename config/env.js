@@ -12,7 +12,7 @@ dotenv.config({path: path.resolve(process.cwd(), envFile) })
 
 export const config = {
     mongodbUri: process.env.MONGODB_URI,
-    port: process.env.PORT,
+    port: process.env.PORT || 8080,
     accessTokenKey: process.env.ACCESS_TOKEN_KEY,
     accessTokenLife: process.env.ACCESS_TOKEN_LIFE,
     refreshTokenKey: process.env.REFRESH_TOKEN_KEY,

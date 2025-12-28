@@ -67,5 +67,8 @@ app.use('/api/classroom', materialRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/broadcasts', broadcastRoutes);
 app.use('/api/solutions', solutionRoutes);
-app.use('/api/admin/comments', adminCommentRoutes); 
+app.use('/api/admin/comments', adminCommentRoutes);
+app.use('/health', (req, res) => {
+    return res.status(200).json({ status: 'OK' });
+})
 export default app;
