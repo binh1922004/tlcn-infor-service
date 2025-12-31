@@ -48,13 +48,15 @@ export const submitProblem = async (req, res) => {
         body.contest,
         id
       );
-      console.log(latestParticipation);
       if (!latestParticipation) {
         return response.sendError(
           res,
           "You are not allowed to submit to this contest",
           403
         );
+      }
+      if (latestParticipation.isDisqualified) {
+        return response.sendError(res, "You are not allowed to submit to this contest", 403);
       }
       const now = new Date();
       if (

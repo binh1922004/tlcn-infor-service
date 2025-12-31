@@ -10,20 +10,24 @@ const migrateProblems = async () => {
 }
 
 const startServer = async () => {
+  if (!process.env.CI){
+    setupSocket();
+    await setupKafkaConsumers();
+
+    if (config.enable_cron_jobs !== 'false') {
+      console.log(' Starting scheduled jobs...');
+      startClassroomAutoCloseJob();
+    } else {
+      console.log(' Cron jobs are disabled');
+    }
+  }
+  else{
+    console.log(' CI environment detected, skipping DB connection and Kafka setup.');
+  }
   await connectDB();
 
-  app.listen(config.port, () => {
+  app.listen(config.port | 8080, () => {
     console.log(`Server running on port ${config.port}`);
   });
-  setupSocket();
-  await setupKafkaConsumers();
-
-  if (config.enable_cron_jobs !== 'false') {
-    console.log(' Starting scheduled jobs...');
-    startClassroomAutoCloseJob();
-  } else {
-    console.log(' Cron jobs are disabled');
-  }
 };
-await migrateProblems()
 startServer();

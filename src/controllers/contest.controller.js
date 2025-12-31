@@ -1,7 +1,7 @@
 import response from "../helpers/response.js";
 import contestModel from "../models/contest.model.js";
 import problemModels from "../models/problem.models.js";
-import {mapToContestDto, pageDTO} from "../helpers/dto.helpers.js";
+import {mapToContestDto, mapToContestParticipantDto, pageDTO} from "../helpers/dto.helpers.js";
 import bcrypt from "bcrypt";
 import contestParticipantModel from "../models/contestParticipant.model.js";
 import {contestIsRunning, getRankingForContest, getUserParticipantStatus} from "../service/contest.service.js";
@@ -652,3 +652,123 @@ export const registerToClassroomContest = async (req, res, next) => {
         return response.sendError(res, error);
     }
 };
+
+
+export const getParticipants = async (req, res, next) => {
+    try {
+        const contestId = req.params.id;
+        console.log(contestId);
+        const {page, size, query} = req.query;
+        const pageNumber = parseInt(page) || 1;
+        const pageSize = parseInt(size) || 20;
+        const skip = (pageNumber - 1) * pageSize;
+        let filter = {};
+        if (query) {
+            filter.query = query;
+        }
+        const participants = await contestParticipantModel.aggregate([
+            {
+                $match: {
+                    contestId: new mongoose.Types.ObjectId(contestId),
+                    mode: 'official',
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    let: { userId: '$userId' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$_id', '$$userId'] }
+                            }
+                        },
+                        {
+                            $project: {
+                                userName: 1,
+                                fullName: 1,
+                                email: 1,
+                                avatar: 1
+                            }
+                        }
+                    ],
+                    as: 'user'
+                }
+            },
+            {
+                $unwind: '$user'
+            },
+            {
+                $match: {
+                    $or: [
+                        { 'user.userName': { $regex: filter.query || '', $options: 'i' } },
+                        { 'user.fullName': { $regex: filter. query || '', $options: 'i' } }
+                    ]
+                }
+            },
+            {
+                $sort: { createdAt: -1 }
+            },
+            // ✅ FACET ĐỂ LẤY CẢ TOTAL VÀ DATA
+            {
+                $facet: {
+                    metadata: [{ $count: 'total' }],
+                    data: [
+                        { $skip: skip },
+                        { $limit: pageSize }
+                    ]
+                }
+            },
+            {
+                $project: {
+                    data: 1,
+                    total: { $arrayElemAt: ['$metadata. total', 0] },
+                    page: { $literal: page },
+                    pageSize: { $literal: pageSize },
+                    totalPages: {
+                        $ceil:  {
+                            $divide: [
+                                { $arrayElemAt: ['$metadata.total', 0] },
+                                pageSize
+                            ]
+                        }
+                    }
+                }
+            }
+        ]);
+        // const participants1 = await contestParticipantModel.find({contestId: contestId, mode: "official"})
+        //     .skip(skip)
+        //     .limit(pageSize)
+        //     .populate("userId", "userName fullName email avatar");
+        const totalParticipants = participants[0]?.totalPages || 0;
+        console.log('Data: ', participants[0]);
+        const data = participants[0]?.data.map(m => {
+            m.userId = null;
+            return mapToContestParticipantDto(m)
+        });
+        return response.sendSuccess(res, pageDTO(data, totalParticipants, pageNumber, pageSize));
+        // return response.sendSuccess(res, participants[0] || {data: [], total: 0, page: pageNumber, pageSize: pageSize, totalPages: 0});
+    }
+    catch (error) {
+        console.log(error)
+        return response.sendError(res, error);
+    }
+}
+
+export const disqualifyParticipant = async (req, res, next) => {
+    try {
+        const contestId = req.params.id;
+        const participantId = req.params.participantId;
+        const participant = await contestParticipantModel.findOne({userId: participantId, contestId: contestId, mode: 'official'});
+        if (!participant) {
+            return response.sendError(res, 'Participant not found', 404);
+        }
+        participant.isDisqualified = !participant.isDisqualified;
+        await participant.save();
+        return response.sendSuccess(res, participant);
+    }
+    catch (error) {
+        console.log(error)
+        return response.sendError(res, error);
+    }
+}

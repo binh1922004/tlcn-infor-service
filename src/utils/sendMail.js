@@ -15,13 +15,15 @@ const transporter = nodemailer.createTransport({
 });
 
 // Thêm verify connection để debug
-transporter.verify(function(error, success) {
-  if (error) {
-    console.log("SMTP Connection Error:", error);
-  } else {
-    console.log("SMTP Server is ready to send emails");
-  }
-});
+if (!process.env.CI){
+  transporter.verify(function(error, success) {
+    if (error) {
+      console.log("SMTP Connection Error:", error);
+    } else {
+      console.log("SMTP Server is ready to send emails");
+    }
+  });
+}
 
 const sendMail = async (to, subject, text, html) => {
   try {

@@ -16,7 +16,8 @@ const contestParticipantSchema = new mongoose.Schema({
         attempts: { type: Number, default: 0 },
         lastSubmittedAt: { type: Date },
     }],
-    lastBestSubmissionScoreAt: { type: Date }
+    lastBestSubmissionScoreAt: { type: Date },
+    isDisqualified: { type: Boolean, default: false },
 }, {
     timestamps: true,   //auto generate createAt and updateAt
     strict: true
