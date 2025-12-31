@@ -295,7 +295,7 @@ export const toggleContestStatus = async (req, res, next) => {
         const contestId = req.params.id;
         const user = req.user;
         
-        console.log(`🔄 Toggle contest status - ID: ${contestId}, User: ${user.userName}`);
+        console.log(` Toggle contest status - ID: ${contestId}, User: ${user.userName}`);
         
         const contest = await contestModel.findById(contestId);
         if (!contest) {
@@ -308,7 +308,7 @@ export const toggleContestStatus = async (req, res, next) => {
         
         console.log(`✅ Contest status changed - isActive: ${contest.isActive}`);
         
-        // ✅ Nếu contest vừa được active, gửi thông báo
+        //  Nếu contest vừa được active, gửi thông báo
         if (wasInactive && contest.isActive && user?.role === 'admin') {
             try {
                 // Tạo broadcast notification
@@ -334,7 +334,7 @@ export const toggleContestStatus = async (req, res, next) => {
                 // Gửi realtime qua socket
                 broadcastNewContest(broadcast);
                 
-                console.log(`✅ Broadcast created and sent for contest ${contest._id}`);
+                console.log(` Broadcast created and sent for contest ${contest._id}`);
             } catch (notificationError) {
                 console.error('❌ Error sending contest notification:', notificationError);
             }
@@ -386,7 +386,6 @@ export const getContestById = async (req, res, next) => {
             if (user?.role === 'admin') {
                 return response.sendSuccess(res, mapToContestDto(contest));
             }
-            // Teacher can ONLY view their own private contests
             if (user?.role === 'teacher') {
                 const isOwner = contest.createdBy && 
                                contest.createdBy.toString() === user._id.toString();
@@ -416,7 +415,7 @@ export const getContestByCode = async (req, res, next) => {
         const code = req.params.code;
         const contest = await contestModel.findOne({code: code}).populate({
             path: 'problems.problemId',
-            select: 'name difficulty shortId' // chọn các field muốn lấy
+            select: 'name difficulty shortId isActive isPrivate' // chọn các field muốn lấy
         })
         if (!contest) {
             return response.sendError(res, 'Contest not found', 404);

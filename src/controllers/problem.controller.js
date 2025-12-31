@@ -143,6 +143,74 @@ export const getProblemByShortId = async (req, res) => {
         if (!problem) {
             return response.sendError(res, "Problem not found", 404);
         }
+        // Kiểm tra bài tập có trong contest mà user đã đăng ký không
+        if (!problem.isActive || problem.isPrivate) {
+            // Tìm contest chứa bài tập này
+            const contestModel = (await import('../models/contest.model.js')).default;
+            const contestParticipantModel = (await import('../models/contestParticipant.model.js')).default;
+            
+            const contest = await contestModel.findOne({
+                'problems.problemId': problem._id,
+                isActive: true
+            });
+
+            if (contest && req.user) {
+                // Kiểm tra user đã đăng ký contest này chưa
+                const isRegistered = await contestParticipantModel.exists({
+                    contestId: contest._id,
+                    userId: req.user._id
+                });
+
+                if (isRegistered) {
+                    // User đã đăng ký contest chứa bài tập này
+                    // Cho phép xem bài tập ngay cả khi isActive = false hoặc isPrivate = true
+                    let lastSubmission = null;
+                    if (req.user) {
+                        const userId = req.user._id;
+                        lastSubmission = await getLatestSubmissionByUser(userId, problem._id);
+                    }
+                    
+                    return response.sendSuccess(res, {
+                        ...problem._doc, 
+                        lastSubmission,
+                        contestInfo: {
+                            contestId: contest._id,
+                            contestCode: contest.code,
+                            contestTitle: contest.title
+                        }
+                    });
+                }
+            }
+        }
+
+        if (!problem.isActive) {
+            // Chỉ admin và teacher tạo bài tập mới được xem bài tập ẩn
+            if (!req.user || req.user.role === 'user') {
+                return response.sendError(res, "Problem not found", 404);
+            }
+            
+            // Teacher chỉ được xem bài tập của chính mình
+            if (req.user.role === 'teacher') {
+                if (!problem.createBy || problem.createBy.toString() !== req.user._id.toString()) {
+                    return response.sendError(res, "Problem not found", 404);
+                }
+            }
+        }
+
+        //  Kiểm tra bài tập có phải private không
+        if (problem.isPrivate && !problem.classRoom) {
+            // Private problem nhưng không thuộc classroom nào
+            if (!req.user || req.user.role === 'user') {
+                return response.sendError(res, "You don't have access to this problem", 403);
+            }
+            
+            // Teacher chỉ được xem bài tập private của chính mình
+            if (req.user.role === 'teacher') {
+                if (!problem.createBy || problem.createBy.toString() !== req.user._id.toString()) {
+                    return response.sendError(res, "You don't have access to this problem", 403);
+                }
+            }
+        }
 
         // Check if problem is private (classroom-only)
         if (problem.classRoom) {
@@ -174,7 +242,7 @@ export const getProblemByShortId = async (req, res) => {
             lastSubmission = await getLatestSubmissionByUser(userId, problem._id);
         }
         return response.sendSuccess(res, {
-            ...problem._doc, // hoặc ...problem._doc nếu dùng Mongoose
+            ...problem._doc, 
             lastSubmission
         });
     }
