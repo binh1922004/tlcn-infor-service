@@ -10,9 +10,11 @@ const migrateProblems = async () => {
 }
 
 const startServer = async () => {
+  await connectDB();
+
   if (!process.env.CI){
     setupSocket();
-    await setupKafkaConsumers();
+    // await setupKafkaConsumers();
 
     if (config.enable_cron_jobs !== 'false') {
       console.log(' Starting scheduled jobs...');
@@ -24,9 +26,8 @@ const startServer = async () => {
   else{
     console.log(' CI environment detected, skipping DB connection and Kafka setup.');
   }
-  await connectDB();
 
-  app.listen(config.port | 8080, () => {
+  app.listen(config.port || 8080, () => {
     console.log(`Server running on port ${config.port}`);
   });
 };
