@@ -1,12 +1,14 @@
 import mongoose from 'mongoose';
+
 const imageSchema = new mongoose.Schema({
   url: { type: String, required: true },
-  publicId: { type: String, required: true },
+  publicId: { type: String },
   width: { type: Number },
   height: { type: Number },
   size: { type: Number },
   originalName: { type: String }
-});
+}, { _id: false });
+
 const postSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -20,7 +22,7 @@ const postSchema = new mongoose.Schema({
     maxlength: 5000
   },
   htmlContent: {
-    type: String, // For rich text content
+    type: String,
     maxlength: 10000
   },
   codeSnippet: {
@@ -32,7 +34,10 @@ const postSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  images: [imageSchema],
+  images: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: []
+  },
   hashtags: [{
     type: String,
     trim: true,
@@ -99,8 +104,17 @@ postSchema.index({ isPublished: 1, createdAt: -1 });
 postSchema.index({ likesCount: -1 });
 postSchema.index({ commentsCount: -1 });
 
-// Pre-save middleware để update counts
 postSchema.pre('save', function(next) {
+  // Normalize images to consistent format
+  if (this.images && Array.isArray(this.images)) {
+    this.images = this.images.map(img => {
+      if (typeof img === 'string') {
+        return img; // Keep string format
+      }
+      return img; // Keep object format
+    });
+  }
+
   if (this.isModified('likes')) {
     this.likesCount = this.likes.length;
   }

@@ -30,7 +30,7 @@ export const createPost = async (req, res) => {
       title,
       content,
       htmlContent,
-      codeSnippet, // ✅ Thêm codeSnippet
+      codeSnippet, 
       images = [],
       hashtags = [],
     } = req.body;
@@ -42,7 +42,7 @@ export const createPost = async (req, res) => {
       title: title.trim(),
       content: content.trim(),
       htmlContent: sanitize(htmlContent),
-      codeSnippet: codeSnippet || '', // ✅ Lưu codeSnippet
+      codeSnippet: codeSnippet || '', 
       author: req.user._id,
       images,
       hashtags,
