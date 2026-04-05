@@ -1,5 +1,5 @@
 import response from "../helpers/response.js";
-import {uploadFile} from "../service/s3.service.js";
+import {generateUpdatePresignedUrl, uploadFile} from "../service/s3.service.js";
 import problemModels from "../models/problem.models.js";
 import {CustomZipProcessor} from "../method/zip.method.js";
 import {pageDTO} from "../helpers/dto.helpers.js";
@@ -41,6 +41,27 @@ export const uploadProblemTestcases = async (req, res) => {
         problem.version = problem.version + 1;
         problem.zipName = req.file.originalname;
         await problemModels.updateOne({ _id: problemId }, problem);
+        return response.sendSuccess(res, data, 'success');
+    }
+    catch (error) {
+        console.log(error);
+        return response.sendError(res, error);
+    }
+}
+
+export const createPreSignedUrl = async (req, res) => {
+    try {
+        const problemId = req.params.id;
+        const problem = await problemModels.findById(problemId);
+        if (problem == null) {
+            return response.sendError(res, "Problem not found", 404);
+        }
+        const s3Prefix = S3_PROBLEM_PREFIX(problemId);
+        const newVersion = problem.version + 1;
+        const nameOfZip = `${problemId}${newVersion > 0 ? `-v${newVersion}` : ''}.zip`;
+        const zipS3Key = s3Prefix ? `${s3Prefix}/${nameOfZip}` : nameOfZip;
+        console.log('generate file name: ', zipS3Key);
+        var data = await generateUpdatePresignedUrl(zipS3Key, "zip");
         return response.sendSuccess(res, data, 'success');
     }
     catch (error) {

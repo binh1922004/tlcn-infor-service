@@ -1,12 +1,12 @@
 import SubmissionModel from "../models/submission.model.js";
-import {sendMessageToUser} from "../socket/socket.js";
-import {Status} from "../utils/statusType.js";
+import { sendMessageToUser } from "../socket/socket.js";
+import { Status } from "../utils/statusType.js";
 import { updateContestParticipantProblemScore } from "./contest.service.js";
 const updateClassroomProgress = async (userId, problemId, status) => {
     try {
         const problemModel = (await import('../models/problem.models.js')).default;
         const classroomModel = (await import('../models/classroom.model.js')).default;
-        
+
         const problem = await problemModel.findById(problemId).select('shortId');
         if (!problem) {
             console.warn('⚠️ Problem not found for progress update:', problemId);
@@ -37,13 +37,13 @@ const updateClassroomProgress = async (userId, problemId, status) => {
         const updatedClassrooms = [];
         for (const classroom of classrooms) {
             await classroom.updateStudentProgress(
-                userId, 
-                problem.shortId, 
-                progressStatus, 
+                userId,
+                problem.shortId,
+                progressStatus,
                 progressScore
             );
             updatedClassrooms.push(classroom.classCode);
-            
+
             console.log(`✅ Updated progress in classroom ${classroom.classCode}:`, {
                 userId,
                 problemShortId: problem.shortId,
@@ -52,8 +52,8 @@ const updateClassroomProgress = async (userId, problemId, status) => {
             });
         }
 
-        return { 
-            updated: true, 
+        return {
+            updated: true,
             classroomsCount: updatedClassrooms.length,
             classrooms: updatedClassrooms,
             problemShortId: problem.shortId,
@@ -71,16 +71,16 @@ export const updateSubmissionStatus = async (submissionId, data) => {
         const submission = await SubmissionModel.findById(submissionId)
             .populate('contest')
             .populate('problem', 'numberOfTestCases time memory');
-        submission.status = data.overall;
-        submission.time = data.time;
-        submission.memory = data.memory;
+        submission.status = Status[data.status];
+        submission.time = data.max_time;
+        submission.memory = data.max_memory_mb;
         submission.passed = data.passed;
         submission.total = data.total;
         if (submission.type === 'contest' && submission.contest && submission.contestParticipant) {
             // If the submission is part of a contest, additional logic can be added here
             const contest = submission.contest;
             const problemInContest = contest.problems.find(p => p.problemId.toString() === submission.problem._id.toString());
-            if (problemInContest){
+            if (problemInContest) {
                 const score = submission.passed / submission.problem.numberOfTestCases * problemInContest.point;
                 submission.score = score;
                 await updateContestParticipantProblemScore(
@@ -91,7 +91,7 @@ export const updateSubmissionStatus = async (submissionId, data) => {
                     submission.status === Status.AC
                 );
             }
-            else{
+            else {
                 return new Error("Problem not found in contest");
             }
         }
@@ -116,10 +116,10 @@ export const updateSubmissionStatus = async (submissionId, data) => {
 }
 
 
-export const getLatestSubmissionByUser = async (userId,  problemId) => {
+export const getLatestSubmissionByUser = async (userId, problemId) => {
     const filter = { user: userId };
     if (problemId) {
         filter.problem = problemId;
     }
-    return await SubmissionModel.findOne(filter).sort({createdAt: -1});
+    return await SubmissionModel.findOne(filter).sort({ createdAt: -1 });
 }

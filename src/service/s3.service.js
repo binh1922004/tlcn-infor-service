@@ -1,4 +1,5 @@
 import {PutObjectCommand, S3Client, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command} from "@aws-sdk/client-s3";
+import {getSignedUrl} from "@aws-sdk/s3-request-presigner"
 import {config} from "../../config/env.js";
 
 const bucketName = config.bucket_name;
@@ -75,6 +76,17 @@ export const listFiles = async (prefix = '', maxKeys = 1000) => {
         hasMore: response.IsTruncated,
         continuationToken: response.NextContinuationToken
     };
+}
+
+export const generateUpdatePresignedUrl = async (key, contentType, expiresIn = 3600) => {
+    const params = {
+        Bucket: bucketName,
+        Key: key,
+        ContentType: contentType,
+    }
+    console.log('generate:', params)
+    const command = new PutObjectCommand(params);
+    return await getSignedUrl(s3, command, { expiresIn });
 }
 
 export const getContentType = (fileName) => {

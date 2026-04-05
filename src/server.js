@@ -2,8 +2,8 @@ import app from "./app.js";
 import { config } from "../config/env.js";
 import connectDB from "../config/db.js";
 import addShortId from "./migration/addShortId.js";
-import {setupKafkaConsumers} from "./service/kafka.service.js";
-import {setupSocket} from "./socket/socket.js";
+import { setupKafkaConsumers } from "./service/kafka.service.js";
+import { setupSocket } from "./socket/socket.js";
 import startClassroomAutoCloseJob from "./jobs/classroom.job.js";
 const migrateProblems = async () => {
   await addShortId();
@@ -12,9 +12,9 @@ const migrateProblems = async () => {
 const startServer = async () => {
   await connectDB();
 
-  if (!process.env.CI){
+  if (!process.env.CI) {
     setupSocket();
-    // await setupKafkaConsumers();
+    await setupKafkaConsumers();
 
     if (config.enable_cron_jobs !== 'false') {
       console.log(' Starting scheduled jobs...');
@@ -23,7 +23,7 @@ const startServer = async () => {
       console.log(' Cron jobs are disabled');
     }
   }
-  else{
+  else {
     console.log(' CI environment detected, skipping DB connection and Kafka setup.');
   }
 

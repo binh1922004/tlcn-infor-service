@@ -5,7 +5,7 @@ export const Status = Object.freeze({
     WA: "Wrong Answer",
     TLE: "Time Limit Exceeded",
     CE: "Compilation Error",
-    RE: "Runtime Error",
+    RTE: "Runtime Error",
     IE: "Internal Error",
     MLE: "Memory Limit Exceeded"
 });

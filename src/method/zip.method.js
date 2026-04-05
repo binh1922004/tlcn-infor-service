@@ -15,11 +15,12 @@ export class CustomZipProcessor {
             console.log(`✅ ZIP validation passed. Found ${validation.folderCount} folders with valid .in/.out files`);
 
             // 2. Upload original ZIP to S3
-            const zipS3Key = s3Prefix ? `${s3Prefix}/original_${originalFileName}` : 'original_' + originalFileName;
+            const nameOfZip = `${problemId}${version > 0 ? `-v${version}` : ''}.zip`;
+            const zipS3Key = s3Prefix ? `${s3Prefix}/${nameOfZip}` : nameOfZip;
             await uploadFile(zipS3Key, zipBuffer, 'application/zip');
 
             // 3. Extract and restructure files
-            const processedFiles = await this.extractAndRestructure(zipBuffer, s3Prefix, problemId, version);
+            // const processedFiles = await this.extractAndRestructure(zipBuffer, s3Prefix, problemId, version);
 
             return {
                 originalZip: {
