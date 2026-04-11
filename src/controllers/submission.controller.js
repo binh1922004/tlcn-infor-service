@@ -6,17 +6,17 @@ import mongoose from "mongoose";
 import contestParticipantModel from "../models/contestParticipant.model.js";
 import { getLatestContestParticipant } from "../service/contest.service.js";
 import problemModels from "../models/problem.models.js";
-import {populate} from "dotenv";
-import {Status} from "../utils/statusType.js";
-const languages = ["cpp", "python", "java", "js", "c", "csharp", "ruby", "go", "swift"];
+import { populate } from "dotenv";
+import { Status } from "../utils/statusType.js";
+const languages = ["cpp", "py", "java", "js", "c", "csharp", "ruby", "go", "swift"];
 
 function verifySubmission(body) {
-    if (!body.source || body.source.trim() === "") {
-      throw new Error("Source code cannot be empty");
-    }
-    if (!body.language || !languages.includes(body.language)) {
-      throw new Error("Language cannot be empty");
-    }
+  if (!body.source || body.source.trim() === "") {
+    throw new Error("Source code cannot be empty");
+  }
+  if (!body.language || !languages.includes(body.language)) {
+    throw new Error("Language cannot be empty");
+  }
 }
 
 export const submitProblem = async (req, res) => {
@@ -128,7 +128,7 @@ export const getSubmissionsByUserId = async (req, res) => {
       filter.classroom = null;
     }
     const userIdJWT = req.user?._id;
-    if (userIdJWT && userIdJWT.toString() !== userId){
+    if (userIdJWT && userIdJWT.toString() !== userId) {
       filter.isPrivate = false;
     }
     const submissions = await SubmissionModel.find(filter)
@@ -148,7 +148,7 @@ export const getSubmissionsByUserId = async (req, res) => {
 
 export const getBestSubmissionByUserId = async (req, res) => {
   try {
-    const userId = req.params.id; 
+    const userId = req.params.id;
     const { problemId, classroomId, excludeClassroom } = req.query;
 
     console.log('📥 Getting best submission:', { userId, problemId, classroomId, excludeClassroom });
@@ -209,18 +209,18 @@ export const getSubmission = async (req, res) => {
       filter.language = language;
     }
 
-    if (contestId){
+    if (contestId) {
       filter.contest = contestId;
     }
 
-    if (status){
-        filter.status = status;
+    if (status) {
+      filter.status = status;
     }
 
     const submissions = await SubmissionModel.find(filter)
-        .populate("user", "userName")
-        .populate("problem", "name")
-        .populate('contest', 'name code')
+      .populate("user", "userName")
+      .populate("problem", "name")
+      .populate('contest', 'name code')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -237,11 +237,11 @@ export const getSubmissionById = async (req, res) => {
   try {
     const id = req.params.id;
     const submission = await SubmissionModel.findById(id)
-        .populate("user", "userName")
-        .populate("problem", "name shortId")
-        .populate('contest', 'title code');
+      .populate("user", "userName")
+      .populate("problem", "name shortId")
+      .populate('contest', 'title code');
     if (!submission) {
-        return response.sendError(res, "Submission not found", 404);
+      return response.sendError(res, "Submission not found", 404);
     }
     const user = req.user;
     if (submission.isPrivate) {
@@ -417,39 +417,39 @@ export const getSubmissionDifficultyChart = async (req, res) => {
 
 
 export const getSubmissionStatistics = async (req, res) => {
-    try {
-        const totalSubmissions = await SubmissionModel.countDocuments();
-        const acSubmissions = await SubmissionModel.countDocuments({ status: Status.AC });
-        const waSubmission = await SubmissionModel.countDocuments({ status: Status.WA });
-        const otherSubmission = totalSubmissions - (acSubmissions + waSubmission);
-        return response.sendSuccess(res, {
-            totalSubmissions,
-            acSubmissions,
-            waSubmission,
-            otherSubmission,
-        });
-    }
-    catch (error) {
-        console.log(error);
-        return response.sendError(res, error);
-    }
+  try {
+    const totalSubmissions = await SubmissionModel.countDocuments();
+    const acSubmissions = await SubmissionModel.countDocuments({ status: Status.AC });
+    const waSubmission = await SubmissionModel.countDocuments({ status: Status.WA });
+    const otherSubmission = totalSubmissions - (acSubmissions + waSubmission);
+    return response.sendSuccess(res, {
+      totalSubmissions,
+      acSubmissions,
+      waSubmission,
+      otherSubmission,
+    });
+  }
+  catch (error) {
+    console.log(error);
+    return response.sendError(res, error);
+  }
 }
 
 export const getSubmissionsByClassroom = async (req, res) => {
   try {
     const classroom = req.classroom;
-    
+
     // Get query params for filtering
-    const { 
-      userId, 
-      problemId, 
-      contestId, 
+    const {
+      userId,
+      problemId,
+      contestId,
       status,
       language,
-      limit = 20, 
-      page = 1 
+      limit = 20,
+      page = 1
     } = req.query;
-    
+
     const skip = (page - 1) * limit;
 
     let filter = {
@@ -569,12 +569,12 @@ export const getClassroomSubmissionStatistics = async (req, res) => {
 
     // Calculate other submissions
     const otherSubmissions = totalSubmissions - (
-      acSubmissions + 
-      waSubmissions + 
-      tleSubmissions + 
-      mleSubmissions + 
-      reSubmissions + 
-      ceSubmissions + 
+      acSubmissions +
+      waSubmissions +
+      tleSubmissions +
+      mleSubmissions +
+      reSubmissions +
+      ceSubmissions +
       pendingSubmissions
     );
 
@@ -587,8 +587,8 @@ export const getClassroomSubmissionStatistics = async (req, res) => {
     const problemsAttempted = uniqueProblems.length;
 
     // Calculate acceptance rate
-    const acceptanceRate = totalSubmissions > 0 
-      ? ((acSubmissions / totalSubmissions) * 100).toFixed(2) 
+    const acceptanceRate = totalSubmissions > 0
+      ? ((acSubmissions / totalSubmissions) * 100).toFixed(2)
       : 0;
 
     console.log(`✅ Statistics for classroom ${classroom.classCode}:`, {
@@ -740,15 +740,15 @@ export const getAllSubmissionStatusStatistics = async (req, res) => {
 
     const timeStats = avgTimeResult.length > 0
       ? {
-          average: Math.round(avgTimeResult[0].avgTime),
-          max: avgTimeResult[0].maxTime,
-          min: avgTimeResult[0].minTime
-        }
+        average: Math.round(avgTimeResult[0].avgTime),
+        max: avgTimeResult[0].maxTime,
+        min: avgTimeResult[0].minTime
+      }
       : {
-          average: 0,
-          max: 0,
-          min: 0
-        };
+        average: 0,
+        max: 0,
+        min: 0
+      };
 
     // Get average memory (for accepted submissions)
     const avgMemoryResult = await SubmissionModel.aggregate([
@@ -771,15 +771,15 @@ export const getAllSubmissionStatusStatistics = async (req, res) => {
 
     const memoryStats = avgMemoryResult.length > 0
       ? {
-          average: Math.round(avgMemoryResult[0].avgMemory),
-          max: avgMemoryResult[0].maxMemory,
-          min: avgMemoryResult[0].minMemory
-        }
+        average: Math.round(avgMemoryResult[0].avgMemory),
+        max: avgMemoryResult[0].maxMemory,
+        min: avgMemoryResult[0].minMemory
+      }
       : {
-          average: 0,
-          max: 0,
-          min: 0
-        };
+        average: 0,
+        max: 0,
+        min: 0
+      };
 
     // Get submissions by language
     const languageStats = await SubmissionModel.aggregate([
@@ -819,19 +819,19 @@ export const getAllSubmissionStatusStatistics = async (req, res) => {
     return response.sendSuccess(res, {
       total: totalSubmissions,
       acceptanceRate: parseFloat(acceptanceRate),
-      
+
       // Status counts
       statusCounts: allStatuses,
-      
+
       // Status percentages
       statusPercentages: Object.keys(statusPercentages).reduce((acc, key) => {
         acc[key] = parseFloat(statusPercentages[key]);
         return acc;
       }, {}),
-      
+
       // Detailed status breakdown
       statusBreakdown: statusCounts,
-      
+
       // User and problem statistics
       statistics: {
         uniqueUsers: uniqueUsers.length,
@@ -843,16 +843,16 @@ export const getAllSubmissionStatusStatistics = async (req, res) => {
           ? (totalSubmissions / uniqueProblems.length).toFixed(2)
           : "0.00"
       },
-      
+
       // Performance statistics (for AC submissions)
       performance: {
         time: timeStats,
         memory: memoryStats
       },
-      
+
       // Language statistics
       languageStatistics: languageStats,
-      
+
       // Applied filters
       filters: {
         userId: userId || null,
