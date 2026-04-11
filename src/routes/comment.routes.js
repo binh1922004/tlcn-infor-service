@@ -14,12 +14,12 @@ import {authenticateToken, optionalAuth, verifyAdmin} from '../middlewares/auth.
 const router = Router();
 
 // Public routes
-router.get('/post/:postId',optionalAuth, getPostComments);
+router.get('/post/:id',optionalAuth, getPostComments);
 router.get('/:commentId', optionalAuth,getCommentById);
 router.get('/:commentId/replies', optionalAuth,getCommentReplies);
 router.get('/:commentId/load-more-replies', optionalAuth, loadMoreReplies);
 // Protected routes
-router.post('/', authenticateToken, createComment);
+router.post('/post/:id', authenticateToken, createComment);
 router.put('/:commentId', authenticateToken, updateComment);
 router.delete('/:commentId', authenticateToken, deleteComment);
 router.post('/:commentId/like', authenticateToken, toggleLikeComment);
