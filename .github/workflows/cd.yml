@@ -24,10 +24,19 @@ jobs:
           test -n "${{ secrets.ENV_PRODUCTION }}" || (echo "Missing secret ENV_PRODUCTION" >&2; exit 1)
           printf "%s" "${{ secrets.ENV_PRODUCTION }}" > .env.production
 
-      - name: Deploy
+      - name: Pre-build new image
         shell: bash
         run: |
-          docker compose -f docker-compose.yml up -d --build --remove-orphans
+          # Builds the new image in the background. 
+          # The current live container continues running without interruption.
+          docker compose -f docker-compose.yml build
+
+      - name: Deploy and Swap Containers
+        shell: bash
+        run: |
+          # Swaps the old container for the newly built one.
+          # --force-recreate ensures the old container is replaced cleanly, preventing name errors.
+          docker compose -f docker-compose.yml up -d --force-recreate --remove-orphans
 
       - name: Show status
         run: docker compose -f docker-compose.yml ps
