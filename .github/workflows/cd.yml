@@ -36,6 +36,7 @@ jobs:
         run: |
           # Swaps the old container for the newly built one.
           # --force-recreate ensures the old container is replaced cleanly, preventing name errors.
+          docker compose -f docker-compose.yml down # <--- Tears down old network and frees ports
           docker compose -f docker-compose.yml up -d --force-recreate --remove-orphans
 
       - name: Show status
