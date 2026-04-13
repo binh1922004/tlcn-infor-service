@@ -1,6 +1,6 @@
 import { Kafka } from "kafkajs";
-import {updateSubmissionStatus} from "./sumission.service.js";
-import {config} from "../../config/env.js";
+import { updateSubmissionStatus } from "./sumission.service.js";
+import { config } from "../../config/env.js";
 
 const KafkaProducerSingleton = (function () {
     let instance;
@@ -9,7 +9,12 @@ const KafkaProducerSingleton = (function () {
         console.log("Initializing Kafka");
         const client = new Kafka({
             clientId: 'bnoj-app',
-            brokers: [config.kafka_brokers]
+            brokers: [config.kafka_brokers],
+            sasl: {
+                mechanism: 'PLAIN',
+                username: config.kafka_user,
+                password: config.kafka_password
+            }
         })
         const producer = client.producer();
         const consumer = client.consumer({ groupId: 'bnoj-group-2' });
@@ -88,14 +93,14 @@ const KafkaProducerSingleton = (function () {
         };
     }
 
-        return {
-            getInstance: function () {
-                if (!instance) {
-                    instance = init();
-                }
-                return instance;
+    return {
+        getInstance: function () {
+            if (!instance) {
+                instance = init();
             }
-        };
+            return instance;
+        }
+    };
 })();
 
 export const sendMessage = async (topic, message) => {
@@ -107,7 +112,7 @@ export const sendMessage = async (topic, message) => {
 
 // Cách sử dụng:
 export const setupKafkaConsumers = async () => {
-    try{
+    try {
         const kafka = KafkaProducerSingleton.getInstance();
 
         // Register for 'user-events' topic
@@ -122,7 +127,7 @@ export const setupKafkaConsumers = async () => {
         // Subscribe tất cả topics
         await kafka.subscribe(['result-topic']);
     }
-    catch (err){
+    catch (err) {
         console.error(err);
     }
 };

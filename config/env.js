@@ -8,7 +8,7 @@ import path from "path";
 //     path: path.resolve(process.cwd(), `.env.${env}`)
 // });
 const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env'
-dotenv.config({path: path.resolve(process.cwd(), envFile) })
+dotenv.config({ path: path.resolve(process.cwd(), envFile) })
 
 export const config = {
     mongodbUri: process.env.MONGODB_URI,
@@ -29,8 +29,10 @@ export const config = {
     bucket_name: process.env.BUCKET_NAME,
     bucket_region: process.env.BUCKET_REGION,
     kafka_brokers: process.env.KAFKA_BROKER,
+    kafka_user: process.env.KAFKA_USER,
+    kafka_password: process.env.KAFKA_PASSWORD,
     kafka_submission_topic: process.env.KAFKA_SUBMISSION_TOPIC,
     redis_host: process.env.REDIS_HOST,
     callback_url: process.env.CALLBACK_URL,
-    enable_cron_jobs:process.env.ENABLE_CRON_JOBS
+    enable_cron_jobs: process.env.ENABLE_CRON_JOBS
 }
