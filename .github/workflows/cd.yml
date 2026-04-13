@@ -1,0 +1,35 @@
+name: CD (Docker Compose / self-hosted)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write .env.production from GitHub Secret
+        shell: bash
+        run: |
+          test -n "${{ secrets.ENV_PRODUCTION }}" || (echo "Missing secret ENV_PRODUCTION" >&2; exit 1)
+          printf "%s" "${{ secrets.ENV_PRODUCTION }}" > .env.production
+
+      - name: Deploy
+        shell: bash
+        run: |
+          docker compose -f docker-compose.yml up -d --build --remove-orphans
+
+      - name: Show status
+        run: docker compose -f docker-compose.yml ps
+
+      - name: Cleanup old images
+        run: docker image prune -f
