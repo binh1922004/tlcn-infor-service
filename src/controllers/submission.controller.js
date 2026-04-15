@@ -8,7 +8,7 @@ import { getLatestContestParticipant } from "../service/contest.service.js";
 import problemModels from "../models/problem.models.js";
 import { populate } from "dotenv";
 import { Status } from "../utils/statusType.js";
-const languages = ["cpp", "py", "java", "js", "c", "csharp", "ruby", "go", "swift"];
+const languages = ["cpp", "py", "java", "js", "c", "csharp", "go", "swift", "pl", "rb"];
 
 function verifySubmission(body) {
   if (!body.source || body.source.trim() === "") {
