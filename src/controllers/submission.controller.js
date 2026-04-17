@@ -119,7 +119,6 @@ export const getSubmissionsByUserId = async (req, res) => {
     }
     if (contestParticipant) {
       filter.contestParticipant = contestParticipant;
-      console.log(contestParticipant);
     }
     if (classroomId) {
       filter.classroom = classroomId;
@@ -151,7 +150,6 @@ export const getBestSubmissionByUserId = async (req, res) => {
     const userId = req.params.id; 
     const { problemId, classroomId, excludeClassroom } = req.query;
 
-    console.log('📥 Getting best submission:', { userId, problemId, classroomId, excludeClassroom });
 
     // Validate required params
     if (!problemId) {
@@ -181,7 +179,6 @@ export const getBestSubmissionByUserId = async (req, res) => {
       return response.sendError(res, "No accepted submission found", 404);
     }
 
-    console.log('✅ Best submission found:', bestSubmission.shortId);
     return response.sendSuccess(res, bestSubmission);
   } catch (error) {
     console.error('❌ Get best submission error:', error);
@@ -591,11 +588,6 @@ export const getClassroomSubmissionStatistics = async (req, res) => {
       ? ((acSubmissions / totalSubmissions) * 100).toFixed(2) 
       : 0;
 
-    console.log(`✅ Statistics for classroom ${classroom.classCode}:`, {
-      totalSubmissions,
-      acSubmissions,
-      activeStudents
-    });
 
     return response.sendSuccess(res, {
       classroom: {

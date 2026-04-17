@@ -21,6 +21,7 @@ import teacherContestRoutes from './routes/teacher.contest.routes.js';
 import teacherSubmissionRoutes from './routes/teacher.submission.routes.js';
 import statisticsRoutes from './routes/statistics.routes.js';
 import adminCommentRoutes from './routes/admin.comment.routes.js';
+import aiConversationRoutes from './routes/aiConversation.routes.js';
 console.log(config.fe_url)
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -71,6 +72,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/broadcasts', broadcastRoutes);
 app.use('/api/solutions', solutionRoutes);
 app.use('/api/admin/comments', adminCommentRoutes);
+app.use('/api/ai-conversations', aiConversationRoutes);
 app.use('/health', (req, res) => {
     return res.status(200).json({ status: 'OK' });
 })

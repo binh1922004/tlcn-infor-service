@@ -106,6 +106,45 @@ export const updateSubmissionStatus = async (submissionId, data) => {
 
             console.log('📊 Classroom progress update result:', progressResult);
         }
+
+        // --- AI Recommendation Logic Start ---
+        if (submission.status === Status.WA || submission.status === Status.TLE) {
+            const failedCount = await SubmissionModel.countDocuments({
+                user: submission.user,
+                problem: submission.problem._id,
+                status: { $in: [Status.WA, Status.TLE] }
+            });
+            console.log(`[AI Trigger Check] User ${submission.user} failed ${failedCount} times on ${submission.problem._id}`);
+            
+            if (failedCount === 3) {
+                const problemModel = (await import('../models/problem.models.js')).default;
+                const fullProblemInfo = await problemModel.findById(submission.problem._id);
+                
+                if (fullProblemInfo) {
+                    const aiRequestPayload = {
+                        userId: submission.user,
+                        submissionId: submission._id,
+                        problemId: submission.problem._id,
+                        problemShortId: fullProblemInfo.shortId,
+                        problemTitle: fullProblemInfo.name,
+                        problemStatement: fullProblemInfo.statement || '',
+                        problemInput: fullProblemInfo.input || '',
+                        problemOutput: fullProblemInfo.output || '',
+                        examplesInput: fullProblemInfo.examplesInput || [],
+                        examplesOutput: fullProblemInfo.examplesOutput || [],
+                        sourceCode: submission.source,
+                        language: submission.language,
+                        failedReason: submission.status
+                    };
+                    
+                    const { sendMessage } = await import('./kafka.service.js');
+                    await sendMessage('ai_request', aiRequestPayload);
+                    console.log(`[AI Request Sent] for submission ${submission._id}`);
+                }
+            }
+        }
+        // --- AI Recommendation Logic End ---
+
         sendMessageToUser(submission.user.toString(), 'submission-update', submission);
         return submission;
     }
