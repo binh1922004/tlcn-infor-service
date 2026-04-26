@@ -22,7 +22,9 @@ import teacherContestRoutes from './routes/teacher.contest.routes.js';
 import teacherSubmissionRoutes from './routes/teacher.submission.routes.js';
 import statisticsRoutes from './routes/statistics.routes.js';
 import adminCommentRoutes from './routes/admin.comment.routes.js';
-console.log(config.fe_url)
+
+import { log } from "./utils/logger.js";
+log(config.fe_url)
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
