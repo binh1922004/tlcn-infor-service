@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { config } from "../../config/env.js";
+import { log, logError } from "./logger.js";
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -18,9 +19,9 @@ const transporter = nodemailer.createTransport({
 if (!process.env.CI){
   transporter.verify(function(error, success) {
     if (error) {
-      console.log("SMTP Connection Error:", error);
+      logError("SMTP Connection Error:", error);
     } else {
-      console.log("SMTP Server is ready to send emails");
+      log("SMTP Server is ready to send emails");
     }
   });
 }
@@ -41,10 +42,10 @@ const sendMail = async (to, subject, text, html) => {
     }
 
     const result = await transporter.sendMail(mailOptions);
-    console.log("Email sent successfully:", result.messageId);
+    log("Email sent successfully:", result.messageId);
     return result;
   } catch (error) {
-    console.error("Send mail error:", error);
+    logError("Send mail error:", error);
     throw error;
   }
 };
