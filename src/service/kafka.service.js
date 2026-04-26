@@ -89,6 +89,20 @@ const KafkaProducerSingleton = (function () {
                     isConnected = false;
                     console.log('Kafka disconnected');
                 }
+            },
+            async checkConnection() {
+                if (!isConnected) {
+                    return { status: 'down', message: 'Kafka is not connected' };
+                }
+                try {
+                    const admin = client.admin();
+                    await admin.connect();
+                    await admin.listTopics(); // verify connection
+                    await admin.disconnect();
+                    return { status: 'up', message: 'Kafka connected' };
+                } catch (error) {
+                    return { status: 'down', message: error.message };
+                }
             }
         };
     }
@@ -108,6 +122,11 @@ export const sendMessage = async (topic, message) => {
     const time = new Date().toISOString();
     console.log(`[${time}] Sending message to topic "${topic}":`, message);
     return await kafka.sendMessage(topic, message);
+};
+
+export const checkKafkaHealth = async () => {
+    const kafka = KafkaProducerSingleton.getInstance();
+    return await kafka.checkConnection();
 };
 
 // Cách sử dụng:

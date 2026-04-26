@@ -1,4 +1,5 @@
 import express from 'express';
+import { checkKafkaHealth } from './service/kafka.service.js';
 import userRoutes from './routes/user.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import postRoutes from './routes/post.routes.js'
@@ -9,7 +10,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import submissionRoute from "./routes/submission.route.js";
 import classroom from "./routes/classroom.routes.js"
-import {config} from "../config/env.js";
+import { config } from "../config/env.js";
 import adminContestRoutes from "./routes/admin.contest.routes.js";
 import contestRoutes from "./routes/contest.routes.js";
 import materialRoutes from './routes/material.routes.js';
@@ -28,15 +29,15 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(
   cors({
     origin: [
-        "http://localhost:5173", // Frontend Vite
-        "http://127.0.0.1:5173",
-        "http://localhost:5174", // Frontend Vite
-        "http://127.0.0.1:5174", // Alternative localhost
-        "http://localhost:5175",
-        "http://127.0.0.1:5175",
-        "https://ball.id.vn",
-        "https://teacher.ball.id.vn",
-        "https://admin.ball.id.vn"
+      "http://localhost:5173", // Frontend Vite
+      "http://127.0.0.1:5173",
+      "http://localhost:5174", // Frontend Vite
+      "http://127.0.0.1:5174", // Alternative localhost
+      "http://localhost:5175",
+      "http://127.0.0.1:5175",
+      "https://ball.id.vn",
+      "https://teacher.ball.id.vn",
+      "https://admin.ball.id.vn"
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -66,12 +67,30 @@ app.use('/api/teacher/submissions', teacherSubmissionRoutes);
 app.use('/api/admin/contests', adminContestRoutes);
 app.use('/api/admin/submissions', adminSubmissionRoutes)
 app.use('/api/classroom', classroom);
-app.use('/api/classroom', materialRoutes); 
+app.use('/api/classroom', materialRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/broadcasts', broadcastRoutes);
 app.use('/api/solutions', solutionRoutes);
 app.use('/api/admin/comments', adminCommentRoutes);
-app.use('/health', (req, res) => {
-    return res.status(200).json({ status: 'OK' });
-})
+app.use('/health', async (req, res) => {
+  try {
+    const kafkaHealth = await checkKafkaHealth();
+
+    const healthStatus = {
+      api: 'UP',
+      kafka: kafkaHealth,
+      timestamp: new Date().toISOString(),
+    };
+
+    const httpStatus = kafkaHealth.status === 'up' ? 200 : 503;
+
+    return res.status(httpStatus).json(healthStatus);
+  } catch (error) {
+    return res.status(500).json({
+      api: 'UP',
+      kafka: { status: 'down', message: error.message },
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
 export default app;
