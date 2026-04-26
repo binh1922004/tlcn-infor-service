@@ -7,9 +7,8 @@ import {isRegisteredForContest} from "../service/contest.service.js";
 const SocketSingleton = (function () {
     let instance;
 
-    function createInstance() {
-        console.log('Create Socket.io instance on port 8888');
-        const io = new Server(8080, {
+    function createInstance(server) {
+        const io = new Server(server, { // Use shared server instead of static port
             cors: {
                 origin: "*",
                 methods: ["GET", "POST"]
@@ -206,9 +205,9 @@ const SocketSingleton = (function () {
         }
     }
     return {
-        getInstance: function () {
+        getInstance: function (server) {
             if (!instance) {
-                instance = createInstance();
+                instance = createInstance(server);
             }
             return instance;
         }
@@ -244,6 +243,6 @@ export const broadcastNewContest = (broadcastData) => {
     });
 }
 
-export const setupSocket = () => {
-    SocketSingleton.getInstance();
+export const setupSocket = (server) => {
+    SocketSingleton.getInstance(server);
 }
