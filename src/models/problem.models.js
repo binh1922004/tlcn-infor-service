@@ -24,6 +24,7 @@ const problemSchema = new mongoose.Schema({
     shortId: { type: String, default: () => randomString() },
     classRoom: {type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null, index: true},
     isContestInClassroom: {type: Boolean, default: false, index: true},
+    rating: {type: Number, default: 0},
     createBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref:"User",
