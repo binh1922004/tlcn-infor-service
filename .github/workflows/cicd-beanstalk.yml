@@ -16,6 +16,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Create .env file from GitHub Secret
+        env:
+          ENV_FILE_CONTENT: ${{ secrets.ENV_PRODUCTION_V1 }}
+        run: |
+          echo "$ENV_FILE_CONTENT" > .env.production
       - name: Install Dependencies
         run: npm install
       - name: Genrate Deployment Package
