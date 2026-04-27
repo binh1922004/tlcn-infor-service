@@ -4,6 +4,7 @@ import { config } from "../../config/env.js";
 import problemModels from "../models/problem.models.js";
 import aiConversationModel from "../models/aiConversation.model.js";
 import { log, logError, logWarn } from "../utils/logger.js";
+import userModel from "../models/user.models.js";
 
 const KafkaProducerSingleton = (function () {
     let instance;
@@ -229,6 +230,12 @@ export const setupKafkaConsumers = async () => {
             const data = JSON.parse(message.value.toString());
             const generatedAt = data.generatedAt ? new Date(data.generatedAt) : new Date();
             const receivedAt = new Date();
+
+            const userPreference = await userModel.findById(data.userId).select('aiHintEnabled');
+            if (!userPreference || userPreference.aiHintEnabled === false) {
+                console.log(`[AI Hint] skipped forwarding because user disabled AI Hint: ${data.userId}`);
+                return;
+            }
 
             let problemShortId = data.problemShortId || null;
             if (!problemShortId && data.problemId) {

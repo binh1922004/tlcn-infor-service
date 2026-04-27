@@ -24,6 +24,7 @@ import statisticsRoutes from './routes/statistics.routes.js';
 import adminCommentRoutes from './routes/admin.comment.routes.js';
 import aiConversationRoutes from './routes/aiConversation.routes.js';
 import { log } from "./utils/logger.js";
+import recommendationRoutes from './routes/recommendation.routes.js';
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -95,4 +96,5 @@ app.use('/health', async (req, res) => {
     });
   }
 });
+app.use('/api/recommendations', recommendationRoutes);
 export default app;

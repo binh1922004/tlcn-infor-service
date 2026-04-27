@@ -1,4 +1,5 @@
 import SubmissionModel from "../models/submission.model.js";
+import userModel from "../models/user.models.js";
 import { sendMessageToUser } from "../socket/socket.js";
 import { Status } from "../utils/statusType.js";
 import { updateContestParticipantProblemScore } from "./contest.service.js";
@@ -20,7 +21,6 @@ const updateClassroomProgress = async (userId, problemId, status) => {
         });
 
         if (classrooms.length === 0) {
-            console.log('ℹ️ No classrooms found for progress update');
             return { updated: false };
         }
 
@@ -43,13 +43,6 @@ const updateClassroomProgress = async (userId, problemId, status) => {
                 progressScore
             );
             updatedClassrooms.push(classroom.classCode);
-
-            console.log(`✅ Updated progress in classroom ${classroom.classCode}:`, {
-                userId,
-                problemShortId: problem.shortId,
-                status: progressStatus,
-                score: progressScore
-            });
         }
 
         return {
@@ -104,11 +97,11 @@ export const updateSubmissionStatus = async (submissionId, data) => {
                 submission.status
             );
 
-            console.log('📊 Classroom progress update result:', progressResult);
         }
 
         // --- AI Recommendation Logic Start ---
         if (submission.status === Status.WA || submission.status === Status.TLE) {
+            const aiHintThreshold = 3;
             const failedCount = await SubmissionModel.countDocuments({
                 user: submission.user,
                 problem: submission.problem._id,
@@ -116,30 +109,28 @@ export const updateSubmissionStatus = async (submissionId, data) => {
             });
             console.log(`[AI Trigger Check] User ${submission.user} failed ${failedCount} times on ${submission.problem._id}`);
             
-            if (failedCount === 3) {
-                const problemModel = (await import('../models/problem.models.js')).default;
-                const fullProblemInfo = await problemModel.findById(submission.problem._id);
-                
-                if (fullProblemInfo) {
-                    const aiRequestPayload = {
-                        userId: submission.user,
-                        submissionId: submission._id,
-                        problemId: submission.problem._id,
-                        problemShortId: fullProblemInfo.shortId,
-                        problemTitle: fullProblemInfo.name,
-                        problemStatement: fullProblemInfo.statement || '',
-                        problemInput: fullProblemInfo.input || '',
-                        problemOutput: fullProblemInfo.output || '',
-                        examplesInput: fullProblemInfo.examplesInput || [],
-                        examplesOutput: fullProblemInfo.examplesOutput || [],
-                        sourceCode: submission.source,
-                        language: submission.language,
-                        failedReason: submission.status
-                    };
+            if (failedCount === aiHintThreshold) {
+                const userPreference = await userModel.findById(submission.user).select('aiHintEnabled');
+                if (userPreference?.aiHintEnabled === false) {
+                    console.log(`[AI Hint Available] skipped because user disabled AI Hint: ${submission.user}`);
+                } else {
+                    const problemModel = (await import('../models/problem.models.js')).default;
+                    const fullProblemInfo = await problemModel.findById(submission.problem._id).select('shortId name');
                     
-                    const { sendMessage } = await import('./kafka.service.js');
-                    await sendMessage('ai_request', aiRequestPayload);
-                    console.log(`[AI Request Sent] for submission ${submission._id}`);
+                    if (fullProblemInfo) {
+                        const hintAvailabilityPayload = {
+                            problemId: submission.problem._id,
+                            problemShortId: fullProblemInfo.shortId,
+                            problemTitle: fullProblemInfo.name,
+                            failedCount,
+                            threshold: aiHintThreshold,
+                            message: 'Bạn có thể sử dụng tính năng gợi ý của AI để hổ trợ làm bài.',
+                            triggeredAt: new Date().toISOString(),
+                        };
+
+                        sendMessageToUser(submission.user.toString(), 'AI_HINT_AVAILABLE', hintAvailabilityPayload);
+                        console.log(`[AI Hint Available] user=${submission.user} problem=${submission.problem._id}`);
+                    }
                 }
             }
         }

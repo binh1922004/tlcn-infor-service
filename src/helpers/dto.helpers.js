@@ -8,7 +8,8 @@ export const mapToUserDto = (user) => {
         fullName: user.fullName,
         active: user.active,
         avatar: user.avatar,
-        role: user.role
+        role: user.role,
+        aiHintEnabled: user.aiHintEnabled !== false,
     }
 }
 export const pageDTO = (data, total, page, limit) => {

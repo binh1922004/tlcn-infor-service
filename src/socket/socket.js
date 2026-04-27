@@ -16,7 +16,6 @@ const SocketSingleton = (function () {
         });
         io.use((socket, next) => {
             const token = socket.handshake.auth.token;
-            console.log(`Received token ${token}`);
             if (!token) {
                 next();
             }

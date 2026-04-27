@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
     dob: {type: String},
     active: {type:Boolean, default: false},
     School: {type: String},
+    aiHintEnabled: { type: Boolean, default: true },
     role: {
       type: String,
       enum: ["user", "admin", "teacher"],

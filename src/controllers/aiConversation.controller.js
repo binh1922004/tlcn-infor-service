@@ -2,7 +2,13 @@ import mongoose from "mongoose";
 import response from "../helpers/response.js";
 import aiConversationModel from "../models/aiConversation.model.js";
 import problemModels from "../models/problem.models.js";
+import SubmissionModel from "../models/submission.model.js";
+import userModel from "../models/user.models.js";
 import { sendMessage } from "../service/kafka.service.js";
+import { Status } from "../utils/statusType.js";
+
+const AI_HINT_THRESHOLD = 3;
+const AI_HINT_FAILED_STATUSES = [Status.WA, Status.TLE];
 
 const resolveProblem = async (problemRef, projection = "_id shortId name") => {
     if (mongoose.Types.ObjectId.isValid(problemRef)) {
@@ -11,10 +17,85 @@ const resolveProblem = async (problemRef, projection = "_id shortId name") => {
     return await problemModels.findOne({ shortId: problemRef }).select(projection);
 };
 
+const buildAiHintEligibility = async ({ userId, problem, aiHintEnabled }) => {
+    // Check if user already solved this problem (Accepted)
+    const hasSolved = await SubmissionModel.exists({
+        user: userId,
+        problem: problem._id,
+        status: "Accepted",
+    });
+
+    if (hasSolved) {
+        return {
+            problemId: problem._id,
+            problemShortId: problem.shortId || null,
+            failedCount: 0,
+            threshold: AI_HINT_THRESHOLD,
+            aiHintEnabled,
+            hasSolved: true,
+            isEligible: false,
+        };
+    }
+
+    const failedCount = await SubmissionModel.countDocuments({
+        user: userId,
+        problem: problem._id,
+        status: { $in: AI_HINT_FAILED_STATUSES },
+    });
+
+    const isEligibleByAttempts = failedCount >= AI_HINT_THRESHOLD;
+    return {
+        problemId: problem._id,
+        problemShortId: problem.shortId || null,
+        failedCount,
+        threshold: AI_HINT_THRESHOLD,
+        aiHintEnabled,
+        hasSolved: false,
+        isEligible: aiHintEnabled && isEligibleByAttempts,
+    };
+};
+
+export const getAiHintEligibilityByProblem = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { problemRef } = req.params;
+
+        const currentUser = await userModel.findById(userId).select("aiHintEnabled");
+        if (!currentUser) {
+            return response.sendError(res, "User not found", 404);
+        }
+
+        const problem = await resolveProblem(problemRef);
+        if (!problem) {
+            return response.sendError(res, "Problem not found", 404);
+        }
+
+        const aiHintEnabled = currentUser.aiHintEnabled !== false;
+        const eligibility = await buildAiHintEligibility({
+            userId,
+            problem,
+            aiHintEnabled,
+        });
+
+        return response.sendSuccess(res, eligibility);
+    } catch (error) {
+        console.error(error);
+        return response.sendError(res, error.message || "Failed to check AI hint eligibility", 500, error);
+    }
+};
+
 export const getConversationByProblem = async (req, res) => {
     try {
         const userId = req.user?._id;
         const { problemRef } = req.params;
+
+        const currentUser = await userModel.findById(userId).select("aiHintEnabled");
+        if (!currentUser) {
+            return response.sendError(res, "User not found", 404);
+        }
+        if (currentUser.aiHintEnabled === false) {
+            return response.sendError(res, "AI Hint is disabled in your privacy settings", 403);
+        }
 
         const problem = await resolveProblem(problemRef);
         if (!problem) {
@@ -55,6 +136,14 @@ export const addUserMessage = async (req, res) => {
         const userId = req.user?._id;
         const { problemRef } = req.params;
         const { content, submissionId = null } = req.body;
+
+        const currentUser = await userModel.findById(userId).select("aiHintEnabled");
+        if (!currentUser) {
+            return response.sendError(res, "User not found", 404);
+        }
+        if (currentUser.aiHintEnabled === false) {
+            return response.sendError(res, "AI Hint is disabled in your privacy settings", 403);
+        }
 
         if (!content || String(content).trim() === "") {
             return response.sendError(res, "Message content is required", 400);
@@ -124,11 +213,22 @@ export const markConversationViewed = async (req, res) => {
     }
 };
 
+const AI_HINT_COOLDOWN_MS = 30 * 1000; // 30 seconds between requests
+const AI_HINT_DAILY_CAP = 10;           // max 10 hint requests per user per problem per day
+
 export const requestFollowUpHint = async (req, res) => {
     try {
         const userId = req.user?._id;
         const { problemRef } = req.params;
         const { sourceCode, language, question = "", submissionId = null } = req.body || {};
+
+        const currentUser = await userModel.findById(userId).select("aiHintEnabled");
+        if (!currentUser) {
+            return response.sendError(res, "User not found", 404);
+        }
+        if (currentUser.aiHintEnabled === false) {
+            return response.sendError(res, "AI Hint is disabled in your privacy settings", 403);
+        }
 
         if (!sourceCode || String(sourceCode).trim() === "") {
             return response.sendError(res, "sourceCode is required", 400);
@@ -145,6 +245,62 @@ export const requestFollowUpHint = async (req, res) => {
         );
         if (!problem) {
             return response.sendError(res, "Problem not found", 404);
+        }
+
+        const eligibility = await buildAiHintEligibility({
+            userId,
+            problem,
+            aiHintEnabled: currentUser.aiHintEnabled !== false,
+        });
+        if (!eligibility.isEligible) {
+            const reason = eligibility.hasSolved
+                ? "Ban da hoan thanh bai nay. AI Hint khong kha dung cho bai da giai thanh cong."
+                : "AI Hint is not unlocked for this problem yet";
+            return response.sendError(res, reason, 403);
+        }
+
+        // --- Rate Limit: Cooldown 30s ---
+        const existingConversation = await aiConversationModel
+            .findOne({ user: userId, problem: problem._id })
+            .select("messages")
+            .lean();
+
+        if (existingConversation?.messages?.length > 0) {
+            const lastUserMessage = [...existingConversation.messages]
+                .reverse()
+                .find((msg) => msg.role === "user" && msg.source === "follow_up_request");
+
+            if (lastUserMessage?.createdAt) {
+                const elapsed = Date.now() - new Date(lastUserMessage.createdAt).getTime();
+                if (elapsed < AI_HINT_COOLDOWN_MS) {
+                    const waitSeconds = Math.ceil((AI_HINT_COOLDOWN_MS - elapsed) / 1000);
+                    return response.sendError(
+                        res,
+                        `Vui long doi ${waitSeconds} giay truoc khi yeu cau goi y tiep theo.`,
+                        429
+                    );
+                }
+            }
+
+            // --- Rate Limit: Daily Cap ---
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+
+            const todayRequestCount = existingConversation.messages.filter(
+                (msg) =>
+                    msg.role === "user" &&
+                    msg.source === "follow_up_request" &&
+                    msg.createdAt &&
+                    new Date(msg.createdAt) >= todayStart
+            ).length;
+
+            if (todayRequestCount >= AI_HINT_DAILY_CAP) {
+                return response.sendError(
+                    res,
+                    `Ban da dat gioi han ${AI_HINT_DAILY_CAP} yeu cau goi y cho bai nay trong ngay hom nay.`,
+                    429
+                );
+            }
         }
 
         const normalizedSubmissionId =
@@ -178,7 +334,7 @@ export const requestFollowUpHint = async (req, res) => {
         );
 
         const conversationContext = (conversation?.messages || [])
-            .slice(-8)
+            .slice(-4)
             .map((msg) => ({
                 role: msg.role,
                 content: String(msg.content || "").slice(0, 2000),
