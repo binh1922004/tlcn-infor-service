@@ -3,12 +3,13 @@ import { updateSubmissionStatus } from "./sumission.service.js";
 import { config } from "../../config/env.js";
 import problemModels from "../models/problem.models.js";
 import aiConversationModel from "../models/aiConversation.model.js";
+import { log, logError, logWarn } from "../utils/logger.js";
 
 const KafkaProducerSingleton = (function () {
     let instance;
 
     function init() {
-        console.log("Initializing Kafka");
+        log("Initializing Kafka");
         const client = new Kafka({
             clientId: 'bnoj-app',
             brokers: [config.kafka_brokers],
@@ -47,7 +48,7 @@ const KafkaProducerSingleton = (function () {
                     await producer.connect();
                     await consumer.connect();
                     isConnected = true;
-                    console.log('Kafka connected');
+                    log('Kafka connected');
                 }
             },
 
@@ -57,7 +58,7 @@ const KafkaProducerSingleton = (function () {
                     throw new Error('Handler must be a function');
                 }
                 topicHandlers.set(topic, handler);
-                console.log(`Handler registered for topic: ${topic}`);
+                log(`Handler registered for topic: ${topic}`);
             },
 
             // Subscribe với xử lý riêng cho từng topic
@@ -66,7 +67,7 @@ const KafkaProducerSingleton = (function () {
 
                 // topics có thể là string hoặc array
                 const topicList = Array.isArray(topics) ? topics : [topics];
-                console.log(`Subscribed topics: ${JSON.stringify(topicList)}`);
+                log(`Subscribed topics: ${JSON.stringify(topicList)}`);
 
                 await consumer.subscribe({ topics: topicList });
 
@@ -84,10 +85,10 @@ const KafkaProducerSingleton = (function () {
                                     key: message.key?.toString(),
                                 });
                             } else {
-                                console.warn(`No handler registered for topic: ${topic}`);
+                                logWarn(`No handler registered for topic: ${topic}`);
                             }
                         } catch (error) {
-                            console.error(`Error processing message from ${topic}:`, error);
+                            logError(`Error processing message from ${topic}:`, error);
                         }
                     },
                 });
@@ -106,7 +107,21 @@ const KafkaProducerSingleton = (function () {
                     await producer.disconnect();
                     await consumer.disconnect();
                     isConnected = false;
-                    console.log('Kafka disconnected');
+                    log('Kafka disconnected');
+                }
+            },
+            async checkConnection() {
+                if (!isConnected) {
+                    return { status: 'down', message: 'Kafka is not connected' };
+                }
+                try {
+                    const admin = client.admin();
+                    await admin.connect();
+                    await admin.listTopics(); // verify connection
+                    await admin.disconnect();
+                    return { status: 'up', message: 'Kafka connected' };
+                } catch (error) {
+                    return { status: 'down', message: error.message };
                 }
             }
         };
@@ -125,8 +140,13 @@ const KafkaProducerSingleton = (function () {
 export const sendMessage = async (topic, message) => {
     const kafka = KafkaProducerSingleton.getInstance();
     const time = new Date().toISOString();
-    console.log(`[${time}] Sending message to topic "${topic}":`, message);
+    log(`[${time}] Sending message to topic "${topic}":`, message);
     return await kafka.sendMessage(topic, message);
+};
+
+export const checkKafkaHealth = async () => {
+    const kafka = KafkaProducerSingleton.getInstance();
+    return await kafka.checkConnection();
 };
 
 // Cách sử dụng:
@@ -136,11 +156,71 @@ export const setupKafkaConsumers = async () => {
 
         // Register for 'user-events' topic
         kafka.registerHandler('result-topic', async ({ topic, partition, message, key }) => {
-            console.log(`Processing user event: ${message.value.toString()}`);
+            log(`Processing user event: ${message.value.toString()}`);
             const data = JSON.parse(message.value.toString());
             await updateSubmissionStatus(data.submissionId, data);
             const time = new Date().toISOString()
-            console.log(`[${time}] update submission status:`, data.submissionId);
+            log(`[${time}] update submission status:`, data.submissionId);
+        });
+
+        // Register for AI recommendation topic
+        kafka.registerHandler('ai_response', async ({ topic, partition, message }) => {
+            console.log(`Received AI Hint: ${message.value.toString()}`);
+            const data = JSON.parse(message.value.toString());
+            const generatedAt = data.generatedAt ? new Date(data.generatedAt) : new Date();
+            const receivedAt = new Date();
+
+            let problemShortId = data.problemShortId || null;
+            if (!problemShortId && data.problemId) {
+                const problem = await problemModels.findById(data.problemId).select('shortId');
+                problemShortId = problem?.shortId || null;
+            }
+
+            try {
+                await aiConversationModel.findOneAndUpdate(
+                    {
+                        user: data.userId,
+                        problem: data.problemId,
+                    },
+                    {
+                        $setOnInsert: {
+                            user: data.userId,
+                            problem: data.problemId,
+                        },
+                        $set: {
+                            lastMessageAt: receivedAt,
+                        },
+                        $push: {
+                            messages: {
+                                role: 'assistant',
+                                content: data.hint || '',
+                                submission: data.submissionId || null,
+                                source: data.source || null,
+                                model: data.model || null,
+                                errorType: data.errorType || null,
+                                createdAt: generatedAt,
+                            },
+                        },
+                    },
+                    { upsert: true, new: true }
+                );
+            } catch (saveError) {
+                console.error('Failed to persist AI conversation message:', saveError);
+            }
+            
+            const { sendMessageToUser } = await import('../socket/socket.js');
+            sendMessageToUser(data.userId, 'HINT_READY', {
+                submissionId: data.submissionId,
+                problemId: data.problemId,
+                problemShortId,
+                hint: data.hint,
+                source: data.source || null,
+                model: data.model || null,
+                errorType: data.errorType || null,
+                generatedAt: generatedAt.toISOString(),
+                receivedAt: receivedAt.toISOString(),
+            });
+            console.log(`[AI Hint] forwarded via socket to user: ${data.userId}`);
         });
 
         // Register for AI recommendation topic
@@ -207,6 +287,6 @@ export const setupKafkaConsumers = async () => {
         await kafka.subscribe(['result-topic', 'ai_response']);
     }
     catch (err) {
-        console.error(err);
+        logError(err);
     }
 };

@@ -2,10 +2,10 @@ version: "3"
 services:
   redis:
     image: redis:latest
-    container_name: redis-container
+    #container_name: redis-container
     restart: always
-    ports:
-      - "6380:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -14,13 +14,16 @@ services:
       timeout: 5s
   info:
     build: .
-    container_name: info-service
+   # container_name: info-service
     restart: always
+    ports:
+      - 8080:8888
+      - 8888:8080
     depends_on:
       redis:
         condition: service_healthy
     env_file:
-      - .env
+      - .env.production
     environment:
       - REDIS_HOST=redis:6379
 

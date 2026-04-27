@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import classroomModel from '../models/classroom.model.js';
+import { log, logError } from '../utils/logger.js';
 
 /**
  * Job tự động đóng lớp học khi hết hạn
@@ -9,7 +10,7 @@ export const startClassroomAutoCloseJob = () => {
   // Chạn mỗi giờ vào phút 0
   cron.schedule('0 * * * *', async () => {
     try {
-      console.log('🔄 [CRON] Checking for expired classrooms...');
+      log('[CRON] Checking for expired classrooms...');
       
       const now = new Date();
       
@@ -20,11 +21,11 @@ export const startClassroomAutoCloseJob = () => {
       });
 
       if (expiredClassrooms.length === 0) {
-        console.log(' [CRON] No expired classrooms found');
+        log('[CRON] No expired classrooms found');
         return;
       }
 
-      console.log(` [CRON] Found ${expiredClassrooms.length} expired classroom(s)`);
+      log(`[CRON] Found ${expiredClassrooms.length} expired classroom(s)`);
 
       // Cập nhật status thành 'closed'
       let closedCount = 0;
@@ -33,17 +34,17 @@ export const startClassroomAutoCloseJob = () => {
         await classroom.save();
         closedCount++;
         
-        console.log(` [CRON] Closed: ${classroom.classCode} - ${classroom.className}`);
+        log(`[CRON] Closed: ${classroom.classCode} - ${classroom.className}`);
       }
 
-      console.log(` [CRON] Auto-close completed. Closed ${closedCount} classroom(s)`);
+      log(`[CRON] Auto-close completed. Closed ${closedCount} classroom(s)`);
       
     } catch (error) {
-      console.error('❌ [CRON] Error in auto-close job:', error);
+      logError('[CRON] Error in auto-close job:', error);
     }
   });
 
-  console.log('✅ Classroom auto-close job started (runs every hour at minute 0)');
+  log('Classroom auto-close job started (runs every hour at minute 0)');
 };
 
 export default startClassroomAutoCloseJob;

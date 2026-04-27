@@ -1,12 +1,14 @@
 import { createClient } from "redis";
 import {config} from "../../config/env.js";
+import { log, logError } from "./logger.js";
+
 const redisHost = config.redis_host || "localhost:6379";
 
 const redisClient = createClient({
   url: `redis://${redisHost}`,
 });
 
-redisClient.on("error", (err) => console.error("Redis error:", err));
+redisClient.on("error", (err) => logError("Redis error:", err));
 
 // Sử dụng IIFE để connect
 (async () => {
@@ -14,9 +16,9 @@ redisClient.on("error", (err) => console.error("Redis error:", err));
     if (!process.env.CI){
       await redisClient.connect();
     }
-    console.log("Redis connected successfully");
+    log("Redis connected successfully");
   } catch (error) {
-    console.error("Redis connection error:", error);
+    logError("Redis connection error:", error);
   }
 })();
 
