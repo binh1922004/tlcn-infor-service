@@ -3,6 +3,7 @@ import userModel from "../models/user.models.js";
 import { sendMessageToUser } from "../socket/socket.js";
 import { Status } from "../utils/statusType.js";
 import { updateContestParticipantProblemScore } from "./contest.service.js";
+import { processSubmissionBKT } from "../utils/bkt.engine.js";
 const updateClassroomProgress = async (userId, problemId, status) => {
     try {
         const problemModel = (await import('../models/problem.models.js')).default;
@@ -135,6 +136,19 @@ export const updateSubmissionStatus = async (submissionId, data) => {
             }
         }
         // --- AI Recommendation Logic End ---
+
+        // --- BKT Skill Mastery Update (async, non-blocking) ---
+        if (submission.status !== Status.Pending && submission.status !== Status.Judging) {
+            const isAccepted = submission.status === Status.AC;
+            processSubmissionBKT(
+                submission.user,
+                submission.problem._id,
+                isAccepted
+            ).catch((err) => {
+                console.error('[BKT] Non-blocking BKT update failed:', err.message);
+            });
+        }
+        // --- BKT End ---
 
         sendMessageToUser(submission.user.toString(), 'submission-update', submission);
         return submission;
