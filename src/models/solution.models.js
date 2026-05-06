@@ -1,44 +1,44 @@
 import mongoose from "mongoose";
 
-const commentSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  content: {
-    type: String,
-    required: true
-  },
-  votes: {
-    upvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    downvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
-  },
-  replies: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    content: {
-      type: String,
-      required: true
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  isEdited: {
-    type: Boolean,
-    default: false
-  },
-  editedAt: {
-    type: Date
-  }
-}, {
-  timestamps: true
-});
+// const commentSchema = new mongoose.Schema({
+//   user: {
+//     type: mongoose.Schema.Types.ObjectId,
+//     ref: 'User',
+//     required: true
+//   },
+//   content: {
+//     type: String,
+//     required: true
+//   },
+//   votes: {
+//     upvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+//     downvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+//   },
+//   replies: [{
+//     user: {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: 'User',
+//       required: true
+//     },
+//     content: {
+//       type: String,
+//       required: true
+//     },
+//     createdAt: {
+//       type: Date,
+//       default: Date.now
+//     }
+//   }],
+//   isEdited: {
+//     type: Boolean,
+//     default: false
+//   },
+//   editedAt: {
+//     type: Date
+//   }
+// }, {
+//   timestamps: true
+// });
 
 const solutionSchema = new mongoose.Schema({
   problem: {
@@ -130,7 +130,7 @@ const solutionSchema = new mongoose.Schema({
     default: 0
   },
   // Comments
-  comments: [commentSchema],
+  //comments: [commentSchema],
   // Author info
   author: {
     type: mongoose.Schema.Types.ObjectId,
@@ -147,7 +147,7 @@ const solutionSchema = new mongoose.Schema({
   // Cho phép đóng góp từ community sau này
   isContribution: {
     type: Boolean,
-    default: false // false = admin post, true = user contribution
+    default: false 
   },
   // Moderation
   moderatedBy: {

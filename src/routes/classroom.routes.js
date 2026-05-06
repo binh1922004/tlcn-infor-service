@@ -235,28 +235,25 @@ router.post(
 );
 
 // Submissions & Stats with classCode
-router.get(
-  "/class/:classCode/submissions",
-  verifyClassroomAccess,
-  getSubmissions
-);
-router.get(
-  "/class/:classCode/students/:studentId/submissions",
-  verifyClassroomAccess,
-  getStudentSubmissions
-);
-router.get(
-  "/class/:classCode/problems/:problemShortId/submissions",
-  verifyClassroomAccess,
-  getProblemSubmissions
-);
-router.get("/:classCode/leaderboard", verifyClassroomAccess, getLeaderboard);
-router.get(
-  "/:classCode/gradebook",
-  authenticateToken,
-  verifyClassroomTeacher,
+router.get('/class/:classCode/submissions', verifyClassroomAccess, getSubmissions);
+router.get('/class/:classCode/students/:studentId/submissions', verifyClassroomAccess, getStudentSubmissions);
+router.get('/class/:classCode/problems/:problemShortId/submissions', verifyClassroomAccess, getProblemSubmissions);
+router.get('/:classCode/leaderboard', verifyClassroomAccess, getLeaderboard);
+router.get('/:classCode/gradebook', 
+  authenticateToken, 
+  verifyClassroomTeacher, 
   getGradeBook
 );
+
+router.get('/:classCode/gradebook/export', 
+  authenticateToken, 
+  verifyClassroomTeacher, 
+  exportGradeBook
+);
+router.get('/class/:classCode/stats', verifyClassroomAccess, getStats);
+router.get('/class/:classCode/activities', verifyClassroomAccess, getRecentActivities);
+// ===== TEACHER/ADMIN ROUTES =====
+router.post('/', verifyAdminOrTeacher, createClassroom);
 
 router.get(
   "/:classCode/gradebook/export",

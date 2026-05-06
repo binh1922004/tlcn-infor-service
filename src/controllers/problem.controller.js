@@ -127,13 +127,14 @@ export const getProblemById = async (req, res) => {
 
 export const getProblems = async (req, res) => {
     try{
-        const {name, tag, difficulty, page, size} = req.query;
+        const { name, tag, tags, difficulty, page, size } = req.query;
+        const tagFilter = tag || tags;
         let filter = {};
         if (name) {
             filter.name = { $regex: name, $options: 'i' }; // Case-insensitive regex search
         }
-        if (tag) {
-            filter.tags = tag; // Exact match for tags
+        if (tagFilter) {
+            filter.tags = tagFilter; // Exact match for tags
         }
         if (difficulty) {
             filter.difficulty = difficulty; // Exact match for difficulty
@@ -144,8 +145,6 @@ export const getProblems = async (req, res) => {
         const pageNumber = parseInt(page) || 1;
         const pageSize = parseInt(size) || 20;
         const skip = (pageNumber - 1) * pageSize;
-        console.log(filter);
-        console.log(skip, ' ', pageSize);
         const problems = await problemModels.find(filter, {numberOfTestcases: 0}).sort({createdAt: -1}).skip(skip).limit(pageSize);
         const total = await problemModels.countDocuments(filter);
         return response.sendSuccess(res, pageDTO(problems, total, pageNumber, pageSize));

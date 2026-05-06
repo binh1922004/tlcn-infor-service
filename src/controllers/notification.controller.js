@@ -7,7 +7,7 @@ import {
 import notificationModel from '../models/notification.model.js';
 import BroadcastNotificationModel from '../models/broadcastNotification.model.js';
 import UserNotificationPreference from '../models/userNotificationPreference.model.js';
-
+import userModel from '../models/user.models.js';
 /**
  *  LẤY DANH SÁCH BROADCASTS
  */
@@ -27,9 +27,16 @@ export const getBroadcasts = async (req, res) => {
             isActive: true,
             _id: { $nin: dismissedIds }
         };
+        const user = await userModel.findById(userId).select('createdAt').lean();
+        if (user && user.createdAt) {
+            filter.createdAt = { $gte: user.createdAt }; 
+        }
 
         if (lastSeenAt) {
-            filter.createdAt = { $gt: new Date(lastSeenAt) };
+            filter.createdAt = { 
+                ...filter.createdAt,
+                $gt: new Date(lastSeenAt) 
+            };
         }
 
         if (type) {
@@ -132,11 +139,23 @@ export const getUnseenBroadcastsCount = async (req, res) => {
         const lastSeenAt = preference?.lastSeenBroadcastAt || new Date(0);
         const dismissedIds = preference?.dismissedBroadcasts || [];
 
-        const count = await BroadcastNotificationModel.countDocuments({
+        const user = await userModel.findById(userId).select('createdAt').lean();
+        
+        const filter = {
             isActive: true,
-            createdAt: { $gt: lastSeenAt },
             _id: { $nin: dismissedIds }
-        });
+        };
+
+        if (user && user.createdAt) {
+            filter.createdAt = { 
+                $gte: user.createdAt, 
+                $gt: lastSeenAt 
+            };
+        } else {
+            filter.createdAt = { $gt: lastSeenAt };
+        }
+
+        const count = await BroadcastNotificationModel.countDocuments(filter);
 
         return response.sendSuccess(res, { count });
     } catch (error) {
