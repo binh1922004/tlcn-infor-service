@@ -2,8 +2,9 @@ import response from "../helpers/response.js";
 import testCasePlanModel from "../models/testCasePlan.model.js";
 import { sendMessage } from "../service/kafka.service.js";
 import { log, logError } from "../utils/logger.js";
+import { config } from "../../config/env.js";
 
-const TOPIC_REQUEST = "test-case-plan-request";
+const TOPIC_REQUEST = config.kafka_topics.ai_test_case_plan_request;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,10 +87,10 @@ export const regenerateTestCasePlan = async (req, res) => {
         }
 
         // Override only the fields the client provides, fall back to stored values
-        const effectiveStatement      = statement      !== undefined ? String(statement).trim()      : plan.statement;
-        const effectiveInput          = inputConstraint !== undefined ? String(inputConstraint).trim() : plan.inputConstraint;
-        const effectiveOutput         = outputConstraint !== undefined ? String(outputConstraint).trim() : plan.outputConstraint;
-        const effectiveCount          = numberOfTestCases !== undefined
+        const effectiveStatement = statement !== undefined ? String(statement).trim() : plan.statement;
+        const effectiveInput = inputConstraint !== undefined ? String(inputConstraint).trim() : plan.inputConstraint;
+        const effectiveOutput = outputConstraint !== undefined ? String(outputConstraint).trim() : plan.outputConstraint;
+        const effectiveCount = numberOfTestCases !== undefined
             ? parseNumberOfTestCases(numberOfTestCases, plan.numberOfTestCases)
             : plan.numberOfTestCases;
 
@@ -98,11 +99,11 @@ export const regenerateTestCasePlan = async (req, res) => {
         }
 
         // Persist any overridden values & reset status
-        plan.statement          = effectiveStatement;
-        plan.inputConstraint    = effectiveInput;
-        plan.outputConstraint   = effectiveOutput;
-        plan.numberOfTestCases  = effectiveCount;
-        plan.status             = "pending";
+        plan.statement = effectiveStatement;
+        plan.inputConstraint = effectiveInput;
+        plan.outputConstraint = effectiveOutput;
+        plan.numberOfTestCases = effectiveCount;
+        plan.status = "pending";
         await plan.save();
 
         // Publish Kafka request
@@ -160,9 +161,9 @@ export const getTestCasePlan = async (req, res) => {
 export const listTestCasePlans = async (req, res) => {
     try {
         const userId = req.user?._id;
-        const page  = Math.max(1, Number(req.query.page)  || 1);
+        const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(50, Number(req.query.limit) || 10);
-        const skip  = (page - 1) * limit;
+        const skip = (page - 1) * limit;
 
         const [plans, total] = await Promise.all([
             testCasePlanModel

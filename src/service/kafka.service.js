@@ -35,18 +35,18 @@ const KafkaProducerSingleton = (function () {
                         await admin.connect();
                         await admin.createTopics({
                             topics: [
-                                { topic: 'result-topic' },
-                                { topic: 'ai_request' },
-                                { topic: 'ai_response' },
-                                { topic: 'submission-topic' },
-                                { topic: 'test-case-plan-request' },
-                                { topic: 'test-case-plan-response' },
+                                { topic: config.kafka_topics.compiler_submission_request },
+                                { topic: config.kafka_topics.compiler_submission_response },
+                                { topic: config.kafka_topics.ai_hint_request },
+                                { topic: config.kafka_topics.ai_hint_response },
+                                { topic: config.kafka_topics.ai_test_case_plan_request },
+                                { topic: config.kafka_topics.ai_test_case_plan_response },
                             ]
                         });
                         await admin.disconnect();
-                        console.log('Kafka topics initialized');
+                        log('Kafka topics initialized');
                     } catch (e) {
-                        console.log('Kafka admin topic creation error (may already exist):', e.message);
+                        logError('Kafka admin topic creation error (may already exist):', e.message);
                     }
 
                     await producer.connect();
@@ -159,7 +159,7 @@ export const setupKafkaConsumers = async () => {
         const kafka = KafkaProducerSingleton.getInstance();
 
         // Register for 'user-events' topic
-        kafka.registerHandler('result-topic', async ({ topic, partition, message, key }) => {
+        kafka.registerHandler(config.kafka_topics.compiler_submission_response, async ({ topic, partition, message, key }) => {
             log(`Processing user event: ${message.value.toString()}`);
             const data = JSON.parse(message.value.toString());
             await updateSubmissionStatus(data.submissionId, data);
@@ -168,7 +168,7 @@ export const setupKafkaConsumers = async () => {
         });
 
         // Register for AI recommendation topic
-        kafka.registerHandler('ai_response', async ({ topic, partition, message }) => {
+        kafka.registerHandler(config.kafka_topics.ai_hint_response, async ({ topic, partition, message }) => {
             console.log(`Received AI Hint: ${message.value.toString()}`);
             const data = JSON.parse(message.value.toString());
             const generatedAt = data.generatedAt ? new Date(data.generatedAt) : new Date();
@@ -211,73 +211,7 @@ export const setupKafkaConsumers = async () => {
             } catch (saveError) {
                 console.error('Failed to persist AI conversation message:', saveError);
             }
-            
-            const { sendMessageToUser } = await import('../socket/socket.js');
-            sendMessageToUser(data.userId, 'HINT_READY', {
-                submissionId: data.submissionId,
-                problemId: data.problemId,
-                problemShortId,
-                hint: data.hint,
-                source: data.source || null,
-                model: data.model || null,
-                errorType: data.errorType || null,
-                generatedAt: generatedAt.toISOString(),
-                receivedAt: receivedAt.toISOString(),
-            });
-            console.log(`[AI Hint] forwarded via socket to user: ${data.userId}`);
-        });
 
-        // Register for AI recommendation topic
-        kafka.registerHandler('ai_response', async ({ topic, partition, message }) => {
-            console.log(`Received AI Hint: ${message.value.toString()}`);
-            const data = JSON.parse(message.value.toString());
-            const generatedAt = data.generatedAt ? new Date(data.generatedAt) : new Date();
-            const receivedAt = new Date();
-
-            const userPreference = await userModel.findById(data.userId).select('aiHintEnabled');
-            if (!userPreference || userPreference.aiHintEnabled === false) {
-                console.log(`[AI Hint] skipped forwarding because user disabled AI Hint: ${data.userId}`);
-                return;
-            }
-
-            let problemShortId = data.problemShortId || null;
-            if (!problemShortId && data.problemId) {
-                const problem = await problemModels.findById(data.problemId).select('shortId');
-                problemShortId = problem?.shortId || null;
-            }
-
-            try {
-                await aiConversationModel.findOneAndUpdate(
-                    {
-                        user: data.userId,
-                        problem: data.problemId,
-                    },
-                    {
-                        $setOnInsert: {
-                            user: data.userId,
-                            problem: data.problemId,
-                        },
-                        $set: {
-                            lastMessageAt: receivedAt,
-                        },
-                        $push: {
-                            messages: {
-                                role: 'assistant',
-                                content: data.hint || '',
-                                submission: data.submissionId || null,
-                                source: data.source || null,
-                                model: data.model || null,
-                                errorType: data.errorType || null,
-                                createdAt: generatedAt,
-                            },
-                        },
-                    },
-                    { upsert: true, new: true }
-                );
-            } catch (saveError) {
-                console.error('Failed to persist AI conversation message:', saveError);
-            }
-            
             const { sendMessageToUser } = await import('../socket/socket.js');
             sendMessageToUser(data.userId, 'HINT_READY', {
                 submissionId: data.submissionId,
@@ -294,7 +228,7 @@ export const setupKafkaConsumers = async () => {
         });
 
         // Register handler for test-case-plan-response
-        kafka.registerHandler('test-case-plan-response', async ({ topic, message }) => {
+        kafka.registerHandler(config.kafka_topics.ai_test_case_plan_response, async ({ topic, message }) => {
             log(`[TestCasePlan] Received response from AI service`);
             const data = JSON.parse(message.value.toString());
 
@@ -352,7 +286,7 @@ export const setupKafkaConsumers = async () => {
         });
 
         // Subscribe all topics
-        await kafka.subscribe(['result-topic', 'ai_response', 'test-case-plan-response']);
+        await kafka.subscribe([config.kafka_topics.compiler_submission_response, config.kafka_topics.ai_hint_response, config.kafka_topics.ai_test_case_plan_response]);
     }
     catch (err) {
         logError(err);
