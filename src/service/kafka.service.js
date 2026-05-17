@@ -3,6 +3,7 @@ import { updateSubmissionStatus } from "./sumission.service.js";
 import { config } from "../../config/env.js";
 import problemModels from "../models/problem.models.js";
 import aiConversationModel from "../models/aiConversation.model.js";
+import testCasePlanModel from "../models/testCasePlan.model.js";
 import { log, logError, logWarn } from "../utils/logger.js";
 import userModel from "../models/user.models.js";
 
@@ -37,7 +38,9 @@ const KafkaProducerSingleton = (function () {
                                 { topic: 'result-topic' },
                                 { topic: 'ai_request' },
                                 { topic: 'ai_response' },
-                                { topic: 'submission-topic' }
+                                { topic: 'submission-topic' },
+                                { topic: 'test-case-plan-request' },
+                                { topic: 'test-case-plan-response' },
                             ]
                         });
                         await admin.disconnect();
@@ -290,8 +293,66 @@ export const setupKafkaConsumers = async () => {
             console.log(`[AI Hint] forwarded via socket to user: ${data.userId}`);
         });
 
-        // Subscribe tất cả topics
-        await kafka.subscribe(['result-topic', 'ai_response']);
+        // Register handler for test-case-plan-response
+        kafka.registerHandler('test-case-plan-response', async ({ topic, message }) => {
+            log(`[TestCasePlan] Received response from AI service`);
+            const data = JSON.parse(message.value.toString());
+
+            const { workflowId, userId, categories, source, model, generatedAt } = data;
+
+            if (!workflowId) {
+                logWarn('[TestCasePlan] Missing workflowId in response — skipping');
+                return;
+            }
+
+            // Detect fallback: single category group whose description signals a generation error
+            const isFailedFallback =
+                Array.isArray(categories) &&
+                categories.length === 1 &&
+                String(categories[0]?.description || '').startsWith('AI could not generate');
+
+            const newStatus = isFailedFallback ? 'failed' : 'done';
+
+            try {
+                const plan = await testCasePlanModel.findById(workflowId);
+                if (!plan) {
+                    logWarn(`[TestCasePlan] Plan not found for workflowId=${workflowId}`);
+                    return;
+                }
+
+                const nextVersionNumber = (plan.versions?.length ?? 0) + 1;
+
+                plan.versions.push({
+                    versionNumber: nextVersionNumber,
+                    categories: Array.isArray(categories) ? categories : [],
+                    source: source || null,
+                    model: model || null,
+                    generatedAt: generatedAt ? new Date(generatedAt) : new Date(),
+                });
+                plan.status = newStatus;
+                await plan.save();
+
+                log(`[TestCasePlan] Saved version ${nextVersionNumber} for workflowId=${workflowId} | status=${newStatus}`);
+            } catch (saveErr) {
+                logError('[TestCasePlan] Failed to persist plan version:', saveErr);
+            }
+
+            // Push WebSocket notification to the requesting user
+            const { sendMessageToUser } = await import('../socket/socket.js');
+            sendMessageToUser(userId, 'TEST_CASE_PLAN_READY', {
+                workflowId,
+                status: newStatus,
+                categories: Array.isArray(categories) ? categories : [],
+                source: source || null,
+                model: model || null,
+                generatedAt,
+            });
+
+            log(`[TestCasePlan] WebSocket TEST_CASE_PLAN_READY sent to userId=${userId}`);
+        });
+
+        // Subscribe all topics
+        await kafka.subscribe(['result-topic', 'ai_response', 'test-case-plan-response']);
     }
     catch (err) {
         logError(err);
