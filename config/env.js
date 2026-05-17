@@ -31,7 +31,14 @@ export const config = {
     kafka_brokers: process.env.KAFKA_BROKER,
     kafka_user: process.env.KAFKA_USER,
     kafka_password: process.env.KAFKA_PASSWORD,
-    kafka_submission_topic: process.env.KAFKA_SUBMISSION_TOPIC,
+    kafka_topics: {
+        compiler_submission_request: process.env.KAFKA_COMPILER_SUBMISSION_REQUEST,
+        compiler_submission_response: process.env.KAFKA_COMPILER_SUBMISSION_RESPONSE,
+        ai_hint_request: process.env.KAFKA_AI_HINT_REQUEST,
+        ai_hint_response: process.env.KAFKA_AI_HINT_RESPONSE,
+        ai_test_case_plan_request: process.env.KAFKA_AI_TEST_CASE_PLAN_REQUEST,
+        ai_test_case_plan_response: process.env.KAFKA_AI_TEST_CASE_PLAN_RESPONSE,
+    },
     redis_host: process.env.REDIS_HOST,
     callback_url: process.env.CALLBACK_URL,
     enable_cron_jobs: process.env.ENABLE_CRON_JOBS

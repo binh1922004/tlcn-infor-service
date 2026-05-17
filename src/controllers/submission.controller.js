@@ -8,6 +8,7 @@ import { getLatestContestParticipant } from "../service/contest.service.js";
 import problemModels from "../models/problem.models.js";
 import { populate } from "dotenv";
 import { Status } from "../utils/statusType.js";
+import { config } from "../../config/env.js";
 const languages = ["cpp", "py", "java", "js", "c", "csharp", "go", "swift", "pl", "rb"];
 
 function verifySubmission(body) {
@@ -83,7 +84,7 @@ export const submitProblem = async (req, res) => {
       "numberOfTestCases time memory version "
     );
     // body.
-    await sendMessage("submission-topic", submission);
+    await sendMessage(config.kafka_topics.compiler_submission, submission);
 
     //testing
     // const submission = await SubmissionModel.findById('68deb1c1043f748a29a7e2ab')
