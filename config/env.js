@@ -38,6 +38,8 @@ export const config = {
         ai_hint_response: process.env.KAFKA_AI_HINT_RESPONSE,
         ai_test_case_plan_request: process.env.KAFKA_AI_TEST_CASE_PLAN_REQUEST,
         ai_test_case_plan_response: process.env.KAFKA_AI_TEST_CASE_PLAN_RESPONSE,
+        ai_test_case_code_request: process.env.KAFKA_AI_TEST_CASE_CODE_REQUEST,
+        ai_test_case_code_response: process.env.KAFKA_AI_TEST_CASE_CODE_RESPONSE,
     },
     redis_host: process.env.REDIS_HOST,
     callback_url: process.env.CALLBACK_URL,
