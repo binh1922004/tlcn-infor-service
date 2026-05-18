@@ -5,9 +5,17 @@ import {
     getTestCasePlan,
     listTestCasePlans,
 } from "../controllers/testCasePlan.controller.js";
+import {
+    createTestCaseCode,
+    regenerateTestCaseCode,
+    getTestCaseCode,
+    listTestCaseCodes,
+} from "../controllers/testCaseCode.controller.js";
 import { authenticateToken } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
+
+// ---- Plan routes ----
 
 // List all plans for the authenticated user
 router.get("/plan", authenticateToken, listTestCasePlans);
@@ -20,5 +28,19 @@ router.get("/plan/:workflowId", authenticateToken, getTestCasePlan);
 
 // Regenerate (new version) for an existing plan
 router.put("/plan/:workflowId", authenticateToken, regenerateTestCasePlan);
+
+// ---- Code-generate routes ----
+
+// List all code generations for the authenticated user
+router.get("/code-generate", authenticateToken, listTestCaseCodes);
+
+// Start code generation for a plan
+router.post("/code-generate/:workflowId", authenticateToken, createTestCaseCode);
+
+// Get code generation result for a plan
+router.get("/code-generate/:workflowId", authenticateToken, getTestCaseCode);
+
+// Regenerate code with optional feedback
+router.put("/code-generate/:workflowId", authenticateToken, regenerateTestCaseCode);
 
 export default router;

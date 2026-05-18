@@ -4,6 +4,7 @@ import { config } from "../../config/env.js";
 import problemModels from "../models/problem.models.js";
 import aiConversationModel from "../models/aiConversation.model.js";
 import testCasePlanModel from "../models/testCasePlan.model.js";
+import testCaseCodeModel from "../models/testCaseCode.model.js";
 import { log, logError, logWarn } from "../utils/logger.js";
 import userModel from "../models/user.models.js";
 
@@ -41,6 +42,8 @@ const KafkaProducerSingleton = (function () {
                                 { topic: config.kafka_topics.ai_hint_response },
                                 { topic: config.kafka_topics.ai_test_case_plan_request },
                                 { topic: config.kafka_topics.ai_test_case_plan_response },
+                                { topic: config.kafka_topics.ai_test_case_code_request },
+                                { topic: config.kafka_topics.ai_test_case_code_response },
                             ]
                         });
                         await admin.disconnect();
@@ -144,7 +147,7 @@ const KafkaProducerSingleton = (function () {
 export const sendMessage = async (topic, message) => {
     const kafka = KafkaProducerSingleton.getInstance();
     const time = new Date().toISOString();
-    log(`[${time}] Sending message to topic "${topic}":`, message);
+    log(`[${time}] Sending message to topic "${topic}"`, message);
     return await kafka.sendMessage(topic, message);
 };
 
@@ -285,8 +288,70 @@ export const setupKafkaConsumers = async () => {
             log(`[TestCasePlan] WebSocket TEST_CASE_PLAN_READY sent to userId=${userId}`);
         });
 
+        // Register handler for test-case-code-response
+        kafka.registerHandler(config.kafka_topics.ai_test_case_code_response, async ({ topic, message }) => {
+            log(`[TestCaseCode] Received response from AI service`);
+            const data = JSON.parse(message.value.toString());
+
+            const { workflowId, userId, inputCode, outputCode, source, model, generatedAt, feedback } = data;
+
+            if (!workflowId) {
+                logWarn('[TestCaseCode] Missing workflowId in response — skipping');
+                return;
+            }
+
+            // Detect failure: empty code signals a generation error
+            const isFailed = !inputCode && !outputCode;
+            const newStatus = isFailed ? 'failed' : 'done';
+
+            try {
+                const codeDoc = await testCaseCodeModel.findOne({ planId: workflowId });
+                if (!codeDoc) {
+                    logWarn(`[TestCaseCode] Code doc not found for planId=${workflowId}`);
+                    return;
+                }
+
+                const nextVersionNumber = (codeDoc.versions?.length ?? 0) + 1;
+
+                codeDoc.versions.push({
+                    versionNumber: nextVersionNumber,
+                    inputCode: inputCode || '',
+                    outputCode: outputCode || '',
+                    source: source || null,
+                    model: model || null,
+                    feedback: feedback || null,
+                    generatedAt: generatedAt ? new Date(generatedAt) : new Date(),
+                });
+                codeDoc.status = newStatus;
+                await codeDoc.save();
+
+                log(`[TestCaseCode] Saved version ${nextVersionNumber} for planId=${workflowId} | status=${newStatus}`);
+            } catch (saveErr) {
+                logError('[TestCaseCode] Failed to persist code version:', saveErr);
+            }
+
+            // Push WebSocket notification
+            const { sendMessageToUser } = await import('../socket/socket.js');
+            sendMessageToUser(userId, 'TEST_CASE_CODE_READY', {
+                workflowId,
+                status: newStatus,
+                inputCode: inputCode || '',
+                outputCode: outputCode || '',
+                source: source || null,
+                model: model || null,
+                generatedAt,
+            });
+
+            log(`[TestCaseCode] WebSocket TEST_CASE_CODE_READY sent to userId=${userId}`);
+        });
+
         // Subscribe all topics
-        await kafka.subscribe([config.kafka_topics.compiler_submission_response, config.kafka_topics.ai_hint_response, config.kafka_topics.ai_test_case_plan_response]);
+        await kafka.subscribe([
+            config.kafka_topics.compiler_submission_response,
+            config.kafka_topics.ai_hint_response,
+            config.kafka_topics.ai_test_case_plan_response,
+            config.kafka_topics.ai_test_case_code_response,
+        ]);
     }
     catch (err) {
         logError(err);

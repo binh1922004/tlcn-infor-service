@@ -84,7 +84,7 @@ export const submitProblem = async (req, res) => {
       "numberOfTestCases time memory version "
     );
     // body.
-    await sendMessage(config.kafka_topics.compiler_submission, submission);
+    await sendMessage(config.kafka_topics.compiler_submission_request, submission);
 
     //testing
     // const submission = await SubmissionModel.findById('68deb1c1043f748a29a7e2ab')
