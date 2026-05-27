@@ -13,7 +13,7 @@ export const getAdminComments = async (req, res) => {
       order = 'desc'
     } = req.query;
 
-    // ✅ Build query - Không filter isDeleted vì field này không có trong DB
+    //  Build query - Không filter isDeleted vì field này không có trong DB
     const query = {};
 
     // Filter by status (isHidden)
@@ -37,7 +37,7 @@ export const getAdminComments = async (req, res) => {
     const [comments, total] = await Promise.all([
       Comment.find(query)
         .populate('author', 'userName fullName avatar email')
-        .populate('post', 'title content')
+        .populate('item', 'title content')
         .populate('hiddenBy', 'userName fullName')
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
@@ -51,8 +51,9 @@ export const getAdminComments = async (req, res) => {
     const commentsWithDetails = comments.map(comment => ({
       _id: comment._id,
       content: comment.content,
-      postTitle: comment.post?.title || 'Unknown Post',
-      postId: comment.post?._id || comment.post || null,
+      itemTitle: comment.item?.title || 'Unknown Post',
+      itemId: comment.item?._id || comment.item || null,
+      itemModel: comment.itemModel,
       authorInfo: comment.author ? {
         _id: comment.author._id,
         userName: comment.author.userName,
@@ -119,10 +120,10 @@ export const getCommentStats = async (req, res) => {
     ]);
 
     // Top posts with most comments
-    const commentsByPost = await Comment.aggregate([
+    const commentsByItem = await Comment.aggregate([
       {
         $group: {
-          _id: '$post',
+          _id: '$item',
           count: { $sum: 1 }
         }
       },
@@ -167,7 +168,7 @@ export const getCommentStats = async (req, res) => {
         visibleComments,
         hiddenComments,
         recentComments,
-        commentsByPost: commentsByPost.length,
+        commentsByItem: commentsByItem.length,
         topCommenters
       },
       'Statistics retrieved successfully'
@@ -190,7 +191,7 @@ export const getRecentComments = async (req, res) => {
 
     const comments = await Comment.find({})
       .populate('author', 'userName fullName avatar')
-      .populate('post', 'title')
+      .populate('item', 'title')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .lean();
@@ -199,7 +200,7 @@ export const getRecentComments = async (req, res) => {
     const formattedComments = comments.map(comment => ({
       _id: comment._id,
       content: comment.content,
-      postTitle: comment.post?.title || 'Unknown Post',
+      itemTitle: comment.item?.title || 'Unknown Post',
       author: comment.author || {
         userName: 'Unknown',
         fullName: 'Unknown User',
@@ -254,7 +255,7 @@ export const toggleHideComment = async (req, res) => {
     await comment.save();
 
     await comment.populate('author', 'userName fullName avatar');
-    await comment.populate('post', 'title');
+    await comment.populate('item', 'title');
 
 
     return response.sendSuccess(
@@ -323,7 +324,7 @@ export const getCommentDetail = async (req, res) => {
 
     const comment = await Comment.findById(commentId)
       .populate('author', 'userName fullName avatar email')
-      .populate('post', 'title content')
+      .populate('item', 'title content')
       .populate('hiddenBy', 'userName fullName')
       .populate({
         path: 'replies',

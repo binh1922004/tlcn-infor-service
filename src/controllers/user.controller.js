@@ -35,6 +35,7 @@ export const getProfileByUserName = async (req, res, next) => {
       avatar: user.avatar,
       active: user.active,
       School: user.School,
+      aiHintEnabled: user.aiHintEnabled !== false,
       role: user.role,
       isOwner: req.user?.userName != null && user.userName === req.user?.userName,
       dob: user.dob,
@@ -60,6 +61,7 @@ export const getUserByUsername = async (req, res, next) => {
       email: user.email,
       avatar: user.avatar,
       active: user.active,
+      aiHintEnabled: user.aiHintEnabled !== false,
       role: user.role,
       isOwner: req.user?.userName != null && user.userName === req.user?.userName,
       dob: user.dob,
@@ -73,7 +75,7 @@ export const updateUser = async (req, res, next) => {
   try {
     // req.userName từ authenticateToken middleware
     const username = req.userName;
-    const { fullName, dob, School, avatar } = req.body;
+    const { fullName, dob, School, avatar, aiHintEnabled } = req.body;
 
     const userFound = await userModel.findByUsername(username);
     
@@ -86,6 +88,13 @@ export const updateUser = async (req, res, next) => {
     if (dob !== undefined) userFound.dob = dob;
     if (School !== undefined) userFound.School = School;
     if (avatar !== undefined) userFound.avatar = avatar;
+    if (aiHintEnabled !== undefined) {
+      if (typeof aiHintEnabled === 'string') {
+        userFound.aiHintEnabled = aiHintEnabled.toLowerCase() === 'true';
+      } else {
+        userFound.aiHintEnabled = Boolean(aiHintEnabled);
+      }
+    }
 
     // Update timestamp
     userFound.updatedAt = new Date();
@@ -100,6 +109,7 @@ export const updateUser = async (req, res, next) => {
       avatar: userFound.avatar,
       dob: userFound.dob,
       School: userFound.School,
+      aiHintEnabled: userFound.aiHintEnabled !== false,
       isOwner: true,
     });
   } catch (err) {

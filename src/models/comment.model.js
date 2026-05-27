@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import Post from './post.model.js';
+
 const commentSchema = new mongoose.Schema({
   content: {
     type: String,
@@ -12,10 +12,15 @@ const commentSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  post: {
+  item: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Post',
-    required: true
+    required: true,
+    refPath: 'itemModel'
+  },
+  itemModel: {
+    type: String,
+    required: true,
+    enum: ['Post', 'Solution'] // Danh sách model có thể comment
   },
   parentComment: {
     type: mongoose.Schema.Types.ObjectId,
@@ -60,6 +65,14 @@ const commentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+  votes: {
+    upvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    downvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  },
+  voteScore: {
+    type: Number,
+    default: 0
+  },
   hiddenAt: Date,
   hiddenReason: String,
 }, {
@@ -69,11 +82,8 @@ const commentSchema = new mongoose.Schema({
 });
 
 // Indexes
-commentSchema.index({ post: 1, createdAt: -1 });
-commentSchema.index({ author: 1 });
-commentSchema.index({ parentComment: 1 });
-commentSchema.index({ post: 1, parentComment: 1 }); // Composite index for better performance
-
+commentSchema.index({ item: 1, itemModel: 1, createdAt: -1 });
+commentSchema.index({ item: 1, itemModel: 1, parentComment: 1 }); // Composite index for better performance
 
 
 // Virtual để check nếu user đã like comment
@@ -81,12 +91,15 @@ commentSchema.virtual('isLiked').get(function() {
   return this.likes && this.likes.length > 0;
 });
 
-// Static method để đếm comments cho một post
-commentSchema.statics.getPostCommentStats = async function(postId) {
+// Static method để đếm comments cho một ITEM (Post/Solution)
+commentSchema.statics.getItemCommentStats = async function(itemId, itemModel) {
   try {
     const countResult = await this.aggregate([
       {
-        $match: { post: new mongoose.Types.ObjectId(postId) }
+        $match: { 
+          item: new mongoose.Types.ObjectId(itemId),
+          itemModel: itemModel || { $exists: true } 
+        }
       },
       {
         $group: {
@@ -121,6 +134,11 @@ commentSchema.statics.getPostCommentStats = async function(postId) {
   }
 };
 
+// Giữ nguyên để tương thích ngược với API cũ TRONG KHI BẠN CHƯA ĐỔI CONTROLLER
+commentSchema.statics.getPostCommentStats = async function(postId) {
+    return this.getItemCommentStats(postId, 'Post');
+};
+
 // Static method để đếm replies cho một comment
 commentSchema.statics.getCommentRepliesCount = async function(commentId) {
   try {
@@ -133,6 +151,7 @@ commentSchema.statics.getCommentRepliesCount = async function(commentId) {
     return 0;
   }
 };
+
 commentSchema.statics.countTotalRepliesRecursive = async function(commentId) {
   // Get direct children
   const directReplies = await this.find({ 
@@ -151,24 +170,26 @@ commentSchema.statics.countTotalRepliesRecursive = async function(commentId) {
   
   return total;
 };
+
 commentSchema.methods.getTotalRepliesCount = async function() {
   return await this.constructor.countTotalRepliesRecursive(this._id);
 };
 
-// Static method để đếm total comments của nhiều posts cùng lúc
-commentSchema.statics.getMultiplePostsCommentStats = async function(postIds) {
+// Static method để đếm total comments của nhiều items
+commentSchema.statics.getMultipleItemsCommentStats = async function(itemIds, itemModel) {
   try {
-    const objectIds = postIds.map(id => new mongoose.Types.ObjectId(id));
+    const objectIds = itemIds.map(id => new mongoose.Types.ObjectId(id));
     
     const stats = await this.aggregate([
       {
         $match: { 
-          post: { $in: objectIds }
+          item: { $in: objectIds },
+          ...(itemModel ? { itemModel } : {})
         }
       },
       {
         $group: {
-          _id: "$post",
+          _id: "$item",
           totalComments: { $sum: 1 },
           parentComments: {
             $sum: {
@@ -184,7 +205,7 @@ commentSchema.statics.getMultiplePostsCommentStats = async function(postIds) {
       }
     ]);
 
-    // Convert to object with postId as key
+    // Convert to object with itemId as key
     const statsMap = {};
     stats.forEach(stat => {
       statsMap[stat._id.toString()] = {
@@ -194,10 +215,9 @@ commentSchema.statics.getMultiplePostsCommentStats = async function(postIds) {
       };
     });
 
-    // Fill in zeros for posts with no comments
-    postIds.forEach(postId => {
-      if (!statsMap[postId.toString()]) {
-        statsMap[postId.toString()] = {
+    itemIds.forEach(itemId => {
+      if (!statsMap[itemId.toString()]) {
+        statsMap[itemId.toString()] = {
           totalComments: 0,
           parentComments: 0,
           replies: 0
@@ -207,18 +227,24 @@ commentSchema.statics.getMultiplePostsCommentStats = async function(postIds) {
 
     return statsMap;
   } catch (error) {
-    console.error("Error getting multiple posts comment stats:", error);
+    console.error("Error getting multiple items comment stats:", error);
     return {};
   }
 };
 
-// Static method để lấy comments có pagination và populated data
-commentSchema.statics.getPostCommentsWithPagination = async function(postId, page = 1, limit = 10) {
+// Tương thích ngược
+commentSchema.statics.getMultiplePostsCommentStats = async function(postIds) {
+    return this.getMultipleItemsCommentStats(postIds, 'Post');
+};
+
+// Lọc pagination
+commentSchema.statics.getItemCommentsWithPagination = async function(itemId, itemModel, page = 1, limit = 10) {
   try {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const comments = await this.find({
-      post: postId,
+      item: itemId,
+      itemModel: itemModel,
       parentComment: null,
     })
       .populate("author", "userName fullName avatar")
@@ -234,7 +260,7 @@ commentSchema.statics.getPostCommentsWithPagination = async function(postId, pag
       .skip(skip)
       .limit(parseInt(limit));
 
-    const stats = await this.getPostCommentStats(postId);
+    const stats = await this.getItemCommentStats(itemId, itemModel);
 
     const pagination = {
       currentPage: parseInt(page),
@@ -284,21 +310,17 @@ commentSchema.methods.getRepliesCount = async function() {
 // Instance method để check user đã like comment này chưa
 commentSchema.methods.isLikedByUser = function(userId) {
   if (!this.likes || this.likes.length === 0 || !userId) {
-
     return false;
   }
   
   const result = this.likes.some(like => {
     let likeUserId;
-    
     if (typeof like === 'string') {
       likeUserId = like;
     } else if (like && typeof like === 'object') {
       likeUserId = like.user || like._id;
     }
-    
     const match = likeUserId && likeUserId.toString() === userId.toString();
-    
     return match;
   });
   
@@ -366,13 +388,17 @@ commentSchema.pre('save', function(next) {
     this.isEdited = true;
     this.editedAt = new Date();
   }
+  // Lưu trạng thái isNew trước khi save
+  if (this.isNew) {
+    this.wasNew = true;
+  }
   next();
 });
 
-// Post-save middleware để update parent comment replies array
+// Post-save middleware để update parent comment replies array VÀ cập nhật commentCount của Post/Solution
 commentSchema.post('save', async function(doc) {
   try {
-    // Nếu có parentComment và không phải comment mới (đã có wasNew = false)
+    // Nếu có parentComment và không phải comment mới
     if (doc.parentComment && doc.wasNew === false) {
       const parentComment = await this.constructor.findById(doc.parentComment);
       if (parentComment) {
@@ -380,37 +406,26 @@ commentSchema.post('save', async function(doc) {
       }
     }
     
-    // Cập nhật commentsCount cho Post - chỉ khi là comment mới
+    // Cập nhật Count cho model cha
     if (doc.wasNew === undefined || doc.wasNew === true) {
-      const stats = await this.constructor.getPostCommentStats(doc.post);
-      await Post.findByIdAndUpdate(
-        doc.post,
-        { $set: { commentsCount: stats.totalComments } },
+      const stats = await this.constructor.getItemCommentStats(doc.item, doc.itemModel);
+      
+      const TargetModel = mongoose.model(doc.itemModel);
+      const counterField = doc.itemModel === 'Post' ? 'commentsCount' : 'commentCount';
+      
+      await TargetModel.findByIdAndUpdate(
+        doc.item,
+        { $set: { [counterField]: stats.totalComments } },
         { new: false } // Không cần trả về document
       );
       
-      // Đánh dấu là đã xử lý
       doc.wasNew = false;
     }
   } catch (error) {
     console.error("Error in post-save middleware:", error);
   }
 });
-commentSchema.pre('save', function(next) {
-  // Lưu trạng thái isNew trước khi save
-  if (this.isNew) {
-    this.wasNew = true;
-  }
-  
-  if (this.isModified('likes')) {
-    this.likesCount = this.likes.length;
-  }
-  if (this.isModified('content') && !this.isNew) {
-    this.isEdited = true;
-    this.editedAt = new Date();
-  }
-  next();
-});
+
 
 // Pre-remove middleware để cleanup references
 commentSchema.pre('findOneAndDelete', async function(next) {
@@ -450,11 +465,16 @@ commentSchema.pre('findOneAndDelete', async function(next) {
       }
     }
     
-    // Cập nhật commentsCount cho Post sau khi xóa
-    await Post.findByIdAndUpdate(
-      doc.post,
-      { $inc: { commentsCount: -totalDeleted } }
-    );
+    // Cập nhật Cound cho model cha (Post/Solution)
+    if (doc.item && doc.itemModel) {
+        const TargetModel = mongoose.model(doc.itemModel);
+        const counterField = doc.itemModel === 'Post' ? 'commentsCount' : 'commentCount';
+
+        await TargetModel.findByIdAndUpdate(
+          doc.item,
+          { $inc: { [counterField]: -totalDeleted } }
+        );
+    }
     
     next();
   } catch (error) {
@@ -462,8 +482,40 @@ commentSchema.pre('findOneAndDelete', async function(next) {
   }
 });
 
+commentSchema.methods.vote = async function(userId, voteType) {
+  const userIdStr = userId.toString();
+  
+  // Khởi tạo nếu chưa có
+  if (!this.votes) this.votes = { upvotes: [], downvotes: [] };
+  
+  const upvoteIndex = this.votes.upvotes.findIndex(id => id.toString() === userIdStr);
+  const downvoteIndex = this.votes.downvotes.findIndex(id => id.toString() === userIdStr);
 
+  if (voteType === 'upvote') {
+    if (downvoteIndex > -1) this.votes.downvotes.splice(downvoteIndex, 1);
+    if (upvoteIndex > -1) {
+      this.votes.upvotes.splice(upvoteIndex, 1); // Bỏ upvote nếu bấm lại
+    } else {
+      this.votes.upvotes.push(userId); // Thêm upvote
+    }
+  } else if (voteType === 'downvote') {
+    if (upvoteIndex > -1) this.votes.upvotes.splice(upvoteIndex, 1);
+    if (downvoteIndex > -1) {
+      this.votes.downvotes.splice(downvoteIndex, 1); // Bỏ downvote nếu bấm lại
+    } else {
+      this.votes.downvotes.push(userId); // Thêm downvote
+    }
+  }
 
+  this.voteScore = this.votes.upvotes.length - this.votes.downvotes.length;
+  await this.save();
+  
+  return {
+    upvotes: this.votes.upvotes.length,
+    downvotes: this.votes.downvotes.length,
+    voteScore: this.voteScore
+  };
+};
 
 const Comment = mongoose.model('Comment', commentSchema);
 

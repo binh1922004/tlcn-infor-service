@@ -1,30 +1,104 @@
 import Comment from "../models/comment.model.js";
 import Post from "../models/post.model.js";
 import response from "../helpers/response.js";
+import mongoose from "mongoose";
+// export const createComment = async (req, res) => {
+//   try {
+//     const { content, postId, parentCommentId } = req.body;
+//     const userId = req.user._id;
+//     const MAX_NESTING_LEVEL = 2;
+    
+//     const post = await Post.findById(postId);
+//     if (!post) {
+//       return response.sendError(res, "Post Not Found", 404);
+//     }
+    
+//     let actualParentCommentId = parentCommentId;
+    
+//     if (parentCommentId) {
+//       const parentComment = await Comment.findById(parentCommentId);
+//       if (!parentComment || parentComment.post.toString() !== postId) {
+//         return response.sendError(
+//           res,
+//           "Không tìm thấy comment bạn reply hoặc không tồn tại trong bài đăng",
+//           404
+//         );
+//       }
+      
+//       if (parentComment.parentComment) {
+//         const grandparentComment = await Comment.findById(parentComment.parentComment);
+//         if (grandparentComment && grandparentComment.parentComment === null) {
+//           actualParentCommentId = parentCommentId;
+//         } else {
+//           actualParentCommentId = grandparentComment ? grandparentComment._id : parentComment.parentComment;
+//         }
+//       }
+//     }
+    
+//     const comment = await Comment.create({
+//       content,
+//       author: userId,
+//       post: postId,
+//       parentComment: actualParentCommentId || null,
+//     });
+
+//     if (actualParentCommentId) {
+//       const parentComment = await Comment.findById(actualParentCommentId);
+//       if (parentComment) {
+//         await parentComment.addReply(comment._id);
+//       }
+//     }
+    
+//     await comment.populate("author", "userName fullName avatar");
+//     return response.sendSuccess(
+//       res,
+//       comment,
+//       "comment created successfully",
+//       201
+//     );
+//   } catch (error) {
+//     console.error("Error creating comment: ", error);
+//     return response.sendError(res, "Internal server error", 500, error.message);
+//   }
+// };
+
 
 export const createComment = async (req, res) => {
   try {
-    const { content, postId, parentCommentId } = req.body;
+    const { id } = req.params; 
+    // Hỗ trợ dự phòng postId nếu Frontend chưa đổi kịp payload
+    const { content, itemId, postId, itemModel = 'Post', parentCommentId } = req.body;
     const userId = req.user._id;
-    const MAX_NESTING_LEVEL = 2;
     
-    const post = await Post.findById(postId);
-    if (!post) {
-      return response.sendError(res, "Post Not Found", 404);
+    const targetItemId = id || itemId || postId; 
+    
+    if (!targetItemId) {
+        return response.sendError(res, "Item ID is required", 400);
+    }
+
+    // Xác định Model để validate xem item kia có tồn tại không
+    const TargetModel = itemModel === 'Post' ? Post : mongoose.model('Solution'); 
+    const itemTarget = await TargetModel.findById(targetItemId).lean();
+    
+    if (!itemTarget) {
+      return response.sendError(res, `${itemModel} Not Found`, 404);
     }
     
     let actualParentCommentId = parentCommentId;
     
     if (parentCommentId) {
       const parentComment = await Comment.findById(parentCommentId);
-      if (!parentComment || parentComment.post.toString() !== postId) {
+      
+      // Chuyển toString() cả 2 vế để so sánh chính xác ObjectId
+      if (!parentComment || parentComment.item.toString() !== targetItemId.toString()) {
         return response.sendError(
           res,
-          "Không tìm thấy comment bạn reply hoặc không tồn tại trong bài đăng",
+          "Không tìm thấy bình luận bạn đang trả lời hoặc bình luận đó không thuộc bài này",
           404
         );
       }
       
+      // Tính toán cấp độ lồng nhau (Grandparent)
       if (parentComment.parentComment) {
         const grandparentComment = await Comment.findById(parentComment.parentComment);
         if (grandparentComment && grandparentComment.parentComment === null) {
@@ -38,7 +112,8 @@ export const createComment = async (req, res) => {
     const comment = await Comment.create({
       content,
       author: userId,
-      post: postId,
+      item: targetItemId,
+      itemModel: itemModel,
       parentComment: actualParentCommentId || null,
     });
 
@@ -50,10 +125,11 @@ export const createComment = async (req, res) => {
     }
     
     await comment.populate("author", "userName fullName avatar");
+    
     return response.sendSuccess(
       res,
       comment,
-      "comment created successfully",
+      "Comment created successfully",
       201
     );
   } catch (error) {
@@ -62,7 +138,6 @@ export const createComment = async (req, res) => {
   }
 };
 
-// UPDATED: Helper function với total replies count đệ quy
 const populateRepliesWithPagination = async (comments, userId, repliesLimit = 3) => {
   if (!Array.isArray(comments) || comments.length === 0) return [];
   
@@ -102,22 +177,29 @@ const populateRepliesWithPagination = async (comments, userId, repliesLimit = 3)
 
 export const getPostComments = async (req, res) => {
   try {
-    const { postId } = req.params;
+    const { id } = req.params; 
     const { 
       page = 1, 
       limit = 10, 
       sortBy = 'oldest',
       repliesLimit = 3, 
-      includeLikedBy = 'false'
+      includeLikedBy = 'false',
+      itemModel = 'Post'    
     } = req.query;
+    
+    // Support cho trường hợp client truyền itemId thay vì postId
+    const targetItemId = id || req.query.itemId;
     
     const userId = req.user?._id || null;
     const isGuest = !userId;
     const shouldIncludeLikedBy = includeLikedBy === 'true';
     
-    const post = await Post.findById(postId);
-    if (!post) {
-      return response.sendError(res, "Post Not Found", 404);
+    // --- BẮT ĐẦU SỬA Ở ĐÂY LẠI CHO ĐÚNG ĐA HÌNH --- //
+    const TargetModel = itemModel === 'Post' ? Post : mongoose.model('Solution');
+    const targetItem = await TargetModel.findById(targetItemId);
+    
+    if (!targetItem) {
+      return response.sendError(res, `${itemModel} Not Found`, 404);
     }
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -137,7 +219,8 @@ export const getPostComments = async (req, res) => {
     }
 
     const comments = await Comment.find({
-      post: postId,
+      item: targetItemId,    // <- Đã sửa thành item
+      itemModel: itemModel,  // <- Đã truyền biến động
       parentComment: null,
     })
       .populate("author", "userName fullName avatar")
@@ -158,7 +241,8 @@ export const getPostComments = async (req, res) => {
       userId
     );
 
-    const stats = await Comment.getPostCommentStats(postId);
+    // Gọi stats động 
+    const stats = await Comment.getItemCommentStats(targetItemId, itemModel);
 
     const pagination = {
       currentPage: parseInt(page),
@@ -338,7 +422,6 @@ export const toggleLikeComment = async (req, res) => {
   }
 };
 
-// UPDATED: Load more replies with recursive total count
 export const loadMoreReplies = async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -489,6 +572,34 @@ export const getCommentById = async (req, res) => {
     return response.sendSuccess(res, commentWithLikeStatus, "Comment retrieved successfully");
   } catch (error) {
     console.error("Error getting comment:", error);
+    return response.sendError(res, "Internal server error", 500, error.message);
+  }
+};
+export const voteComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { voteType } = req.body; // 'upvote' hoặc 'downvote'
+    const userId = req.user._id;
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      return response.sendError(res, "Comment not found", 404);
+    }
+
+    if (!['upvote', 'downvote'].includes(voteType)) {
+      return response.sendError(res, "Invalid vote type", 400);
+    }
+
+    // Gọi method vote đã định nghĩa trong Schema
+    const voteResult = await comment.vote(userId, voteType);
+
+    return response.sendSuccess(
+      res, 
+      voteResult, 
+      "Voted successfully"
+    );
+  } catch (error) {
+    console.error("Error voting comment:", error);
     return response.sendError(res, "Internal server error", 500, error.message);
   }
 };

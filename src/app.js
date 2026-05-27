@@ -22,9 +22,11 @@ import teacherContestRoutes from './routes/teacher.contest.routes.js';
 import teacherSubmissionRoutes from './routes/teacher.submission.routes.js';
 import statisticsRoutes from './routes/statistics.routes.js';
 import adminCommentRoutes from './routes/admin.comment.routes.js';
-
+import aiConversationRoutes from './routes/aiConversation.routes.js';
 import { log } from "./utils/logger.js";
-log(config.fe_url)
+import recommendationRoutes from './routes/recommendation.routes.js';
+import bktRoutes from './routes/bkt.routes.js';
+import testCasePlanRoutes from './routes/testCasePlan.routes.js';
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -74,6 +76,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/broadcasts', broadcastRoutes);
 app.use('/api/solutions', solutionRoutes);
 app.use('/api/admin/comments', adminCommentRoutes);
+app.use('/api/ai-conversations', aiConversationRoutes);
 app.use('/health', async (req, res) => {
   try {
     const kafkaHealth = await checkKafkaHealth();
@@ -95,4 +98,7 @@ app.use('/health', async (req, res) => {
     });
   }
 });
+app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/bkt', bktRoutes);
+app.use('/api/test-case', testCasePlanRoutes);
 export default app;

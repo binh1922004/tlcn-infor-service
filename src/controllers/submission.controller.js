@@ -8,6 +8,7 @@ import { getLatestContestParticipant } from "../service/contest.service.js";
 import problemModels from "../models/problem.models.js";
 import { populate } from "dotenv";
 import { Status } from "../utils/statusType.js";
+import { config } from "../../config/env.js";
 const languages = ["cpp", "py", "java", "js", "c", "csharp", "go", "swift", "pl", "rb"];
 
 function verifySubmission(body) {
@@ -83,7 +84,7 @@ export const submitProblem = async (req, res) => {
       "numberOfTestCases time memory version "
     );
     // body.
-    await sendMessage("submission-topic", submission);
+    await sendMessage(config.kafka_topics.compiler_submission_request, submission);
 
     //testing
     // const submission = await SubmissionModel.findById('68deb1c1043f748a29a7e2ab')
@@ -119,7 +120,6 @@ export const getSubmissionsByUserId = async (req, res) => {
     }
     if (contestParticipant) {
       filter.contestParticipant = contestParticipant;
-      console.log(contestParticipant);
     }
     if (classroomId) {
       filter.classroom = classroomId;
@@ -151,7 +151,6 @@ export const getBestSubmissionByUserId = async (req, res) => {
     const userId = req.params.id;
     const { problemId, classroomId, excludeClassroom } = req.query;
 
-    console.log('📥 Getting best submission:', { userId, problemId, classroomId, excludeClassroom });
 
     // Validate required params
     if (!problemId) {
@@ -181,7 +180,6 @@ export const getBestSubmissionByUserId = async (req, res) => {
       return response.sendError(res, "No accepted submission found", 404);
     }
 
-    console.log('✅ Best submission found:', bestSubmission.shortId);
     return response.sendSuccess(res, bestSubmission);
   } catch (error) {
     console.error('❌ Get best submission error:', error);
@@ -591,11 +589,6 @@ export const getClassroomSubmissionStatistics = async (req, res) => {
       ? ((acSubmissions / totalSubmissions) * 100).toFixed(2)
       : 0;
 
-    console.log(`✅ Statistics for classroom ${classroom.classCode}:`, {
-      totalSubmissions,
-      acSubmissions,
-      activeStudents
-    });
 
     return response.sendSuccess(res, {
       classroom: {
