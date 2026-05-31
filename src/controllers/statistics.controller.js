@@ -3,6 +3,7 @@ import Problem from '../models/problem.models.js';
 import Submission from '../models/submission.model.js';
 import Contest from '../models/contest.model.js';
 import response from '../helpers/response.js';
+import { Status } from '../utils/statusType.js';
 
 /**
  * Get public statistics for landing page
@@ -130,7 +131,7 @@ export const getDashboardStatistics = async (req, res) => {
     // 4. Count submissions
     const totalSubmissions = await Submission.countDocuments();
     const acceptedSubmissions = await Submission.countDocuments({ 
-      status: 'AC' 
+      status: Status.AC   // "Accepted"
     });
 
     // Submission stats by status
@@ -197,6 +198,9 @@ export const getDashboardStatistics = async (req, res) => {
     return response.sendSuccess(
       res,
       {
+        // Top-level acceptanceRate for easy access
+        acceptanceRate: parseFloat(submissionStats.acceptanceRate),
+
         users: {
           total: totalUsers,
           active: activeUsers,
@@ -297,7 +301,7 @@ export const getSubmissionsByLanguage = async (req, res) => {
           _id: '$language',
           total: { $sum: 1 },
           accepted: {
-            $sum: { $cond: [{ $eq: ['$status', 'AC'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ['$status', Status.AC] }, 1, 0] }
           }
         }
       },

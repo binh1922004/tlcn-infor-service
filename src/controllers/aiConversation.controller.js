@@ -341,7 +341,7 @@ export const requestFollowUpHint = async (req, res) => {
                 createdAt: msg.createdAt,
             }));
 
-        await sendMessage("ai_request", {
+        await sendMessage("ai.hint.request", {
             userId,
             submissionId: normalizedSubmissionId,
             problemId: problem._id,
