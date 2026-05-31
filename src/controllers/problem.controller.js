@@ -1,5 +1,8 @@
 import response from "../helpers/response.js";
 import {generateUpdatePresignedUrl, uploadFile} from "../service/s3.service.js";
+import contestModel from '../models/contest.model.js';
+import contestParticipantModel from '../models/contestParticipant.model.js';
+import classroomModel from '../models/classroom.model.js';
 import problemModels from "../models/problem.models.js";
 import {CustomZipProcessor} from "../method/zip.method.js";
 import {pageDTO} from "../helpers/dto.helpers.js";
@@ -9,7 +12,7 @@ const IMAGE_PROBLEM_DIR = (problemId, imgKey) => `problems/${problemId}/images/$
 const TESTCASE_PROBLEM_DIR = (problemId, testcaseKey) => `problems/${problemId}/testcase/${testcaseKey}`;
 const ZIP_PROBLEM_DIR = (problemId, zipKey) => `problems/${problemId}/${zipKey}`;
 const S3_PROBLEM_PREFIX = (problemId) => `problems/${problemId}`;
-
+// not using
 export const uploadProblemImage = async (req, res) => {
     try{
         const data = await uploadFile(IMAGE_PROBLEM_DIR('a123', req.file.originalname), req.file.buffer, req.file.mimetype);
@@ -157,118 +160,101 @@ export const getProblems = async (req, res) => {
 
 
 export const getProblemByShortId = async (req, res) => {
-    try{
+    try {
         const id = req.params.id;
-        let problem = await problemModels.findOne({shortId: id}, {numberOfTestcases: 0});
+        const user = req.user;
+
+        // 1. Lấy thông tin bài tập
+        const problem = await problemModels.findOne({ shortId: id }, { numberOfTestcases: 0 });
         if (!problem) {
             return response.sendError(res, "Problem not found", 404);
         }
-        // Kiểm tra bài tập có trong contest mà user đã đăng ký không
-        if (!problem.isActive || problem.isPrivate) {
-            // Tìm contest chứa bài tập này
-            const contestModel = (await import('../models/contest.model.js')).default;
-            const contestParticipantModel = (await import('../models/contestParticipant.model.js')).default;
-            
-            const contest = await contestModel.findOne({
-                'problems.problemId': problem._id,
-                isActive: true
-            });
 
-            if (contest && req.user) {
-                // Kiểm tra user đã đăng ký contest này chưa
-                const isRegistered = await contestParticipantModel.exists({
-                    contestId: contest._id,
-                    userId: req.user._id
+        // Biến lưu trữ thông tin contest nếu user truy cập thông qua contest
+        let contestInfo = null;
+
+        // 2. KIỂM TRA QUYỀN TRUY CẬP (AUTHORIZATION)
+        // Nếu bài tập hoàn toàn public (active, public, không thuộc classroom), bỏ qua check quyền
+        const isPublic = problem.isActive && !problem.isPrivate && !problem.classRoom;
+
+        if (!isPublic) {
+            let hasAccess = false;
+
+            // Quyền 1: Admin luôn có quyền
+            if (user?.role === 'admin') hasAccess = true;
+
+            // Quyền 2: Teacher tạo ra bài tập
+            if (!hasAccess && user?.role === 'teacher' && problem.createBy?.toString() === user._id.toString()) {
+                hasAccess = true;
+            }
+
+            // Quyền 3: Truy cập thông qua Contest (Bỏ qua isPrivate / isActive)
+            if (!hasAccess && (!problem.isActive || problem.isPrivate)) {
+                const contest = await contestModel.findOne({
+                    'problems.problemId': problem._id,
+                    isActive: true
                 });
 
-                if (isRegistered) {
-                    // User đã đăng ký contest chứa bài tập này
-                    // Cho phép xem bài tập ngay cả khi isActive = false hoặc isPrivate = true
-                    let lastSubmission = null;
-                    if (req.user) {
-                        const userId = req.user._id;
-                        lastSubmission = await getLatestSubmissionByUser(userId, problem._id);
-                    }
-                    
-                    return response.sendSuccess(res, {
-                        ...problem._doc, 
-                        lastSubmission,
-                        contestInfo: {
+                if (contest && user) {
+                    const isRegistered = await contestParticipantModel.exists({
+                        contestId: contest._id,
+                        userId: user._id
+                    });
+
+                    if (isRegistered) {
+                        hasAccess = true;
+                        contestInfo = {
                             contestId: contest._id,
                             contestCode: contest.code,
                             contestTitle: contest.title
-                        }
-                    });
+                        };
+                    }
                 }
             }
-        }
 
-        if (!problem.isActive) {
-            // Chỉ admin và teacher tạo bài tập mới được xem bài tập ẩn
-            if (!req.user || req.user.role === 'user') {
-                return response.sendError(res, "Problem not found", 404);
-            }
-            
-            // Teacher chỉ được xem bài tập của chính mình
-            if (req.user.role === 'teacher') {
-                if (!problem.createBy || problem.createBy.toString() !== req.user._id.toString()) {
-                    return response.sendError(res, "Problem not found", 404);
+            // Quyền 4: Truy cập thông qua ClassRoom
+            if (!hasAccess && problem.classRoom) {
+                if (!user) {
+                    return response.sendError(res, "You must be logged in to access this problem", 401);
                 }
-            }
-        }
 
-        //  Kiểm tra bài tập có phải private không
-        if (problem.isPrivate && !problem.classRoom) {
-            // Private problem nhưng không thuộc classroom nào
-            if (!req.user || req.user.role === 'user') {
-                return response.sendError(res, "You don't have access to this problem", 403);
-            }
-            
-            // Teacher chỉ được xem bài tập private của chính mình
-            if (req.user.role === 'teacher') {
-                if (!problem.createBy || problem.createBy.toString() !== req.user._id.toString()) {
-                    return response.sendError(res, "You don't have access to this problem", 403);
+                const classroom = await classroomModel.findById(problem.classRoom);
+                if (!classroom) {
+                    return response.sendError(res, "Classroom not found", 404);
                 }
-            }
-        }
 
-        // Check if problem is private (classroom-only)
-        if (problem.classRoom) {
-            // If user not logged in, deny access
-            if (!req.user) {
-                return response.sendError(res, "You must be logged in to access this problem", 401);
+                const isTeacher = classroom.isTeacher(user._id);
+                const isStudent = classroom.isStudent(user._id);
+                
+                if (isTeacher || isStudent) hasAccess = true;
             }
 
-            // Check if user has access to this classroom
-            const classroomModel = (await import('../models/classroom.model.js')).default;
-            const classroom = await classroomModel.findById(problem.classRoom);
-            
-            if (!classroom) {
-                return response.sendError(res, "Classroom not found", 404);
-            }
-
-            const userId = req.user._id;
-            const isTeacher = classroom.isTeacher(userId);
-            const isStudent = classroom.isStudent(userId);
-            const isAdmin = req.user.role === 'admin';
-
-            if (!isTeacher && !isStudent && !isAdmin) {
+            // Xử lý từ chối truy cập nếu không thỏa mãn bất kỳ quyền nào ở trên
+            if (!hasAccess) {
+                // Giữ nguyên logic trả về mã lỗi của bạn
+                if (!problem.isActive) {
+                    return response.sendError(res, "Problem not found", 404); // Ẩn hoàn toàn với user thường
+                }
                 return response.sendError(res, "You don't have access to this problem", 403);
             }
         }
+
+        // 3. XỬ LÝ DỮ LIỆU TRẢ VỀ (Sau khi đã chắc chắn có quyền)
         let lastSubmission = null;
-        if (req.user) {
-            const userId = req.user._id;
-            lastSubmission = await getLatestSubmissionByUser(userId, problem._id);
+        if (user) {
+            lastSubmission = await getLatestSubmissionByUser(user._id, problem._id);
         }
+
+        // Gom chung 1 chỗ return thành công duy nhất
         return response.sendSuccess(res, {
-            ...problem._doc, 
-            lastSubmission
+            ...problem._doc,
+            lastSubmission,
+            ...(contestInfo && { contestInfo }) // Chỉ thêm field contestInfo nếu nó tồn tại
         });
-    }
-    catch (error) {
-        console.log(error);
-        return response.sendError(res, error);
+
+    } catch (error) {
+        console.error(error);
+        return response.sendError(res, error.message || "Internal Server Error");
     }
 }
 

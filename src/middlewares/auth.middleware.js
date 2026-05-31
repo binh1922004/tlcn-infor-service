@@ -24,7 +24,9 @@ export const authenticateToken = async (req, res, next) => {
 export const optionalAuth = (req, res, next) => {
   try {
     const authHeader = req.header('Authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null; 
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : req.cookies?.access_token || null;
     if (!token) {
       req.user = null;
       return next();
