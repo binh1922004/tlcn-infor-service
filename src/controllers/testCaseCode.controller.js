@@ -213,3 +213,74 @@ export const listTestCaseCodes = async (req, res) => {
         return response.sendError(res, error.message || "Failed to list test case codes", 500, error);
     }
 };
+
+// ---------------------------------------------------------------------------
+// POST /api/test-case/execute/:workflowId
+// ---------------------------------------------------------------------------
+
+export const executeTestCaseCode = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { workflowId } = req.params;
+        const { version } = req.body;
+
+        const codeDoc = await testCaseCodeModel.findOne({ planId: workflowId, userId });
+        if (!codeDoc) {
+            return response.sendError(
+                res,
+                "No code generation found for this plan",
+                404
+            );
+        }
+
+        if (codeDoc.status !== "done") {
+             return response.sendError(
+                 res,
+                 "Code generation must be completed before execution",
+                 400
+             );
+        }
+
+        let targetVersion = null;
+        if (version) {
+            targetVersion = codeDoc.versions.find(v => v.versionNumber === Number(version));
+        } else {
+            targetVersion = codeDoc.versions?.[codeDoc.versions.length - 1];
+        }
+
+        if (!targetVersion) {
+            return response.sendError(
+                res,
+                "Specific version not found or no versions available",
+                404
+            );
+        }
+
+        if (!targetVersion.inputCode && !targetVersion.outputCode) {
+            return response.sendError(
+                res,
+                "Target version has no executable code",
+                400
+            );
+        }
+
+        await sendMessage(config.kafka_topics.compiler_test_case_generation_request, {
+            planId: workflowId,
+            version: targetVersion.versionNumber,
+            inputCode: targetVersion.inputCode,
+            outPutCode: targetVersion.outputCode,
+        });
+
+        log(`[TestCaseCode] Executing code for planId=${workflowId} | version=${targetVersion.versionNumber} | userId=${userId}`);
+
+        return response.sendSuccess(
+            res,
+            { workflowId, version: targetVersion.versionNumber, status: "pending" },
+            "Test case execution queued",
+            202
+        );
+    } catch (error) {
+        logError("[TestCaseCode] executeTestCaseCode error:", error);
+        return response.sendError(res, error.message || "Failed to execute test case code", 500, error);
+    }
+};
