@@ -89,6 +89,16 @@ export const generateUpdatePresignedUrl = async (key, contentType, expiresIn = 3
     return await getSignedUrl(s3, command, { expiresIn });
 }
 
+export const generateGetPresignedUrl = async (key, expiresIn = 3600) => {
+    const params = {
+        Bucket: bucketName,
+        Key: key,
+    }
+    console.log('generate:', params)
+    const command = new GetObjectCommand(params);
+    return await getSignedUrl(s3, command, { expiresIn });
+}
+
 export const getContentType = (fileName) => {
     const ext = fileName.toLowerCase().split('.').pop();
     const contentTypes = {

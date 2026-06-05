@@ -6,7 +6,7 @@ import aiConversationModel from "../models/aiConversation.model.js";
 import testCasePlanModel from "../models/testCasePlan.model.js";
 import testCaseCodeModel from "../models/testCaseCode.model.js";
 import { log, logError, logWarn } from "../utils/logger.js";
-import userModel from "../models/user.models.js";
+const { sendMessageToUser } = await import('../socket/socket.js');
 
 const KafkaProducerSingleton = (function () {
     let instance;
@@ -44,6 +44,8 @@ const KafkaProducerSingleton = (function () {
                                 { topic: config.kafka_topics.ai_test_case_plan_response },
                                 { topic: config.kafka_topics.ai_test_case_code_request },
                                 { topic: config.kafka_topics.ai_test_case_code_response },
+                                { topic: config.kafka_topics.compiler_test_case_generation_request },
+                                { topic: config.kafka_topics.compiler_test_case_generation_response },
                             ]
                         });
                         await admin.disconnect();
@@ -147,7 +149,7 @@ const KafkaProducerSingleton = (function () {
 export const sendMessage = async (topic, message) => {
     const kafka = KafkaProducerSingleton.getInstance();
     const time = new Date().toISOString();
-    log(`[${time}] Sending message to topic "${topic}"`, message);
+    log(`[${time}] Sending message to topic "${topic}", message: ${JSON.stringify(message)}`);
     return await kafka.sendMessage(topic, message);
 };
 
@@ -215,7 +217,6 @@ export const setupKafkaConsumers = async () => {
                 console.error('Failed to persist AI conversation message:', saveError);
             }
 
-            const { sendMessageToUser } = await import('../socket/socket.js');
             sendMessageToUser(data.userId, 'HINT_READY', {
                 submissionId: data.submissionId,
                 problemId: data.problemId,
@@ -275,7 +276,6 @@ export const setupKafkaConsumers = async () => {
             }
 
             // Push WebSocket notification to the requesting user
-            const { sendMessageToUser } = await import('../socket/socket.js');
             sendMessageToUser(userId, 'TEST_CASE_PLAN_READY', {
                 workflowId,
                 status: newStatus,
@@ -331,7 +331,6 @@ export const setupKafkaConsumers = async () => {
             }
 
             // Push WebSocket notification
-            const { sendMessageToUser } = await import('../socket/socket.js');
             sendMessageToUser(userId, 'TEST_CASE_CODE_READY', {
                 workflowId,
                 status: newStatus,
@@ -345,12 +344,49 @@ export const setupKafkaConsumers = async () => {
             log(`[TestCaseCode] WebSocket TEST_CASE_CODE_READY sent to userId=${userId}`);
         });
 
+        // Register handler for compiler-test-case-generation-response
+        kafka.registerHandler(config.kafka_topics.compiler_test_case_generation_response, async ({ topic, message }) => {
+            log(`[CompilerTestCase] Received response from Compiler service`);
+            const data = JSON.parse(message.value.toString());
+
+            const { planId, version, success, s3Key, testCount, error: errorMsg } = data;
+
+            try {
+                // Find the associated code doc to get userId
+                const codeDoc = await testCaseCodeModel.findOne({ planId: planId });
+                if (!codeDoc) {
+                    logWarn(`[CompilerTestCase] Code doc not found for planId=${planId}`);
+                    return;
+                }
+                var currentVersion = codeDoc.versions.find((v) => v.versionNumber === version);
+                if (!currentVersion) {
+                    logWarn(`[CompilerTestCase] Version ${version} not found for planId=${planId}`);
+                    return;
+                }
+                currentVersion.testCaseUrl = s3Key || null;
+                await codeDoc.save();
+                // Push WebSocket notification
+                sendMessageToUser(codeDoc.userId, 'COMPILER_TEST_CASE_READY', {
+                    workflowId: planId,
+                    status: success ? 'done' : 'failed',
+                    s3Key: s3Key || null,
+                    testCount: testCount || 0,
+                    error: errorMsg || null,
+                });
+
+                log(`[CompilerTestCase] WebSocket COMPILER_TEST_CASE_READY sent to userId=${codeDoc.userId}`);
+            } catch (err) {
+                logError('[CompilerTestCase] Failed to process compiler test case response:', err);
+            }
+        });
+
         // Subscribe all topics
         await kafka.subscribe([
             config.kafka_topics.compiler_submission_response,
             config.kafka_topics.ai_hint_response,
             config.kafka_topics.ai_test_case_plan_response,
             config.kafka_topics.ai_test_case_code_response,
+            config.kafka_topics.compiler_test_case_generation_response,
         ]);
     }
     catch (err) {

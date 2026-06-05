@@ -6,6 +6,7 @@ import SubmissionModel from "../models/submission.model.js";
 import userModel from "../models/user.models.js";
 import { sendMessage } from "../service/kafka.service.js";
 import { Status } from "../utils/statusType.js";
+import {config} from "../../config/env.js";
 
 const AI_HINT_THRESHOLD = 3;
 const AI_HINT_FAILED_STATUSES = [Status.WA, Status.TLE];
@@ -341,7 +342,7 @@ export const requestFollowUpHint = async (req, res) => {
                 createdAt: msg.createdAt,
             }));
 
-        await sendMessage("ai.hint.request", {
+        await sendMessage(config.kafka_topics.ai_hint_request, {
             userId,
             submissionId: normalizedSubmissionId,
             problemId: problem._id,
