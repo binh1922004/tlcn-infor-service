@@ -10,6 +10,7 @@ import {
     regenerateTestCaseCode,
     getTestCaseCode,
     listTestCaseCodes,
+    executeTestCaseCode,
 } from "../controllers/testCaseCode.controller.js";
 import { authenticateToken } from "../middlewares/auth.middleware.js";
 
@@ -42,5 +43,8 @@ router.get("/code-generate/:workflowId", authenticateToken, getTestCaseCode);
 
 // Regenerate code with optional feedback
 router.put("/code-generate/:workflowId", authenticateToken, regenerateTestCaseCode);
+
+// Execute generated code to generate testcases zip
+router.post("/execute/:workflowId", authenticateToken, executeTestCaseCode);
 
 export default router;
