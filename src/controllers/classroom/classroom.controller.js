@@ -98,7 +98,8 @@ export const getClassrooms = async (req, res, next) => {
       page = 1, 
       limit = 10, 
       status = 'active',
-      role
+      role,
+      search = ''
     } = req.query;
     const userId = req.user._id;
     const userRole = req.user.role;
@@ -120,6 +121,20 @@ export const getClassrooms = async (req, res, next) => {
 
     if (status && status !== 'all') {
       query.status = status;
+    }
+
+    // Search filter — className hoặc classCode
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      query.$and = [
+        ...(query.$and || []),
+        {
+          $or: [
+            { className: regex },
+            { classCode: regex }
+          ]
+        }
+      ];
     }
 
     const total = await classroomModel.countDocuments(query);

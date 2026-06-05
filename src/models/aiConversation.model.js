@@ -1,11 +1,24 @@
 import mongoose from "mongoose";
 
+/**
+ * aiMessageSchema — một tin nhắn trong cuộc trò chuyện AI.
+ *
+ * role   : "user" | "assistant" | "system"
+ * type   : "hint" — gợi ý được kích hoạt bởi submission (tự động hoặc follow-up)
+ *          "chat" — tin nhắn chat tự do do người dùng gõ sau khi có hint
+ * source : nguồn cụ thể hơn ("follow_up_request", "chat_message", ...)
+ */
 const aiMessageSchema = new mongoose.Schema(
     {
         role: {
             type: String,
             enum: ["user", "assistant", "system"],
             required: true,
+        },
+        type: {
+            type: String,
+            enum: ["hint", "chat"],
+            default: "hint",
         },
         content: { type: String, required: true },
         submission: {
