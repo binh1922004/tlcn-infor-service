@@ -34,6 +34,8 @@ export const config = {
     kafka_topics: {
         compiler_submission_request: process.env.KAFKA_COMPILER_SUBMISSION_REQUEST || 'compiler.submission.request',
         compiler_submission_response: process.env.KAFKA_COMPILER_SUBMISSION_RESPONSE || 'compiler.submission.response',
+        compiler_test_case_generation_request: process.env.KAFKA_COMPILER_TEST_CASE_GENERATION_REQUEST || 'compiler.submission.request',
+        compiler_test_case_generation_response: process.env.KAFKA_COMPILER_TEST_CASE_GENERATION_RESPONSE || 'compiler.submission.response',
         ai_hint_request: process.env.KAFKA_AI_HINT_REQUEST || 'ai.hint.request',
         ai_hint_response: process.env.KAFKA_AI_HINT_RESPONSE || 'ai.hint.response',
         ai_test_case_plan_request: process.env.KAFKA_AI_TEST_CASE_PLAN_REQUEST || 'ai.test-case-plan.request',
