@@ -8,8 +8,11 @@ const testCaseCodeVersionSchema = new mongoose.Schema(
         source: { type: String, default: null },
         model: { type: String, default: null },
         feedback: { type: String, default: null },
-        testCaseUrl: { type: String, default: null},
+        s3Key: { type: String, default: null},
         generatedAt: { type: Date, default: Date.now },
+        isSuccessful: { type: Boolean, default: false },
+        errorMessage: { type: String, default: null },
+        planVersionNumber: { type: Number, required: true },
     },
     { _id: false }
 );

@@ -36,6 +36,8 @@ const testCasePlanSchema = new mongoose.Schema(
         statement: { type: String, required: true },
         inputConstraint: { type: String, default: "" },
         outputConstraint: { type: String, default: "" },
+        inputExample: { type: String, required: true, maxlength: 2000 },
+        outputExample: { type: String, required: true, maxlength: 2000 },
         numberOfTestCases: { type: Number, default: 5, min: 1, max: 50 },
         versions: { type: [testCasePlanVersionSchema], default: [] },
         status: {

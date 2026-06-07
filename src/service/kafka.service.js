@@ -6,6 +6,7 @@ import aiConversationModel from "../models/aiConversation.model.js";
 import testCasePlanModel from "../models/testCasePlan.model.js";
 import testCaseCodeModel from "../models/testCaseCode.model.js";
 import { log, logError, logWarn } from "../utils/logger.js";
+import {generateGetPresignedUrl} from "./s3.service.js";
 const { sendMessageToUser } = await import('../socket/socket.js');
 
 const KafkaProducerSingleton = (function () {
@@ -293,7 +294,7 @@ export const setupKafkaConsumers = async () => {
             log(`[TestCaseCode] Received response from AI service`);
             const data = JSON.parse(message.value.toString());
 
-            const { workflowId, userId, inputCode, outputCode, source, model, generatedAt, feedback } = data;
+            const { workflowId, userId, inputCode, outputCode, source, model, generatedAt, feedback, planVersionNumber } = data;
 
             if (!workflowId) {
                 logWarn('[TestCaseCode] Missing workflowId in response — skipping');
@@ -319,6 +320,7 @@ export const setupKafkaConsumers = async () => {
                     outputCode: outputCode || '',
                     source: source || null,
                     model: model || null,
+                    planVersionNumber: planVersionNumber,
                     feedback: feedback || null,
                     generatedAt: generatedAt ? new Date(generatedAt) : new Date(),
                 });
@@ -363,13 +365,20 @@ export const setupKafkaConsumers = async () => {
                     logWarn(`[CompilerTestCase] Version ${version} not found for planId=${planId}`);
                     return;
                 }
-                currentVersion.testCaseUrl = s3Key || null;
+                currentVersion.s3Key = s3Key || null;
+                if (success) {
+                    currentVersion.isSuccessful = true;
+                } else {
+                    currentVersion.isSuccessful = false;
+                    currentVersion.errorMessage = errorMsg || 'Unknown error during test case generation';
+                }
                 await codeDoc.save();
+
                 // Push WebSocket notification
-                sendMessageToUser(codeDoc.userId, 'COMPILER_TEST_CASE_READY', {
+                sendMessageToUser(codeDoc.userId.toString(), 'COMPILER_TEST_CASE_READY', {
                     workflowId: planId,
                     status: success ? 'done' : 'failed',
-                    s3Key: s3Key || null,
+                    s3Key: s3Key,
                     testCount: testCount || 0,
                     error: errorMsg || null,
                 });
