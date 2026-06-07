@@ -31,7 +31,7 @@ jobs:
           aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
           aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
           application_name: 'info-service'
-          environment_name: 'Info-service-env'
+          environment_name: 'Info-service-env-1'
           version_label: "${{ github.sha }}-${{ github.run_attempt }}"          
           region: us-east-1
           deployment_package: nodejs-app-build.zip
