@@ -2,6 +2,7 @@ import response from "../helpers/response.js";
 import testCasePlanModel from "../models/testCasePlan.model.js";
 import testCaseCodeModel from "../models/testCaseCode.model.js";
 import { sendMessage } from "../service/kafka.service.js";
+import { generateGetPresignedUrl } from "../service/s3.service.js";
 import { log, logError } from "../utils/logger.js";
 import { config } from "../../config/env.js";
 
@@ -66,6 +67,9 @@ export const createTestCaseCode = async (req, res) => {
             statement: plan.statement,
             inputConstraint: plan.inputConstraint,
             outputConstraint: plan.outputConstraint,
+            inputExample: plan.inputExample,
+            outputExample: plan.outputExample,
+            planVersionNumber: latestVersion.versionNumber,
             language: "python",
             categories: latestVersion.categories,
         });
@@ -137,6 +141,9 @@ export const regenerateTestCaseCode = async (req, res) => {
             statement: plan.statement,
             inputConstraint: plan.inputConstraint,
             outputConstraint: plan.outputConstraint,
+            inputExample: plan.inputExample,
+            outputExample: plan.outputExample,
+            planVersionNumber: latestVersion.versionNumber,
             language: codeDoc.language,
             categories: latestVersion.categories,
             feedback: feedback ? String(feedback).trim() : null,
@@ -282,5 +289,85 @@ export const executeTestCaseCode = async (req, res) => {
     } catch (error) {
         logError("[TestCaseCode] executeTestCaseCode error:", error);
         return response.sendError(res, error.message || "Failed to execute test case code", 500, error);
+    }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/test-case/download/:workflowId  (generate presigned download URL)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a short-lived presigned S3 GET URL for downloading the test case zip.
+ * The caller supplies workflowId + optional version number.
+ * The S3 key is never exposed to or accepted from the client.
+ *
+ * Query params:
+ *   version (optional) — specific version number; defaults to the latest version
+ */
+export const getTestCaseDownloadUrl = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const { workflowId } = req.params;
+        const { version } = req.query;
+
+        // 1. Fetch the code doc owned by this user
+        const codeDoc = await testCaseCodeModel
+            .findOne({ planId: workflowId, userId })
+            .lean();
+
+        if (!codeDoc) {
+            return response.sendError(res, "No code generation found for this plan", 404);
+        }
+
+        // 2. Resolve the target version
+        let targetVersion;
+        if (version !== undefined) {
+            const vNum = Number(version);
+            if (!Number.isInteger(vNum) || vNum < 1) {
+                return response.sendError(res, "version must be a positive integer", 400);
+            }
+            targetVersion = codeDoc.versions.find((v) => v.versionNumber === vNum);
+            if (!targetVersion) {
+                return response.sendError(
+                    res,
+                    `Version ${vNum} not found for this workflow`,
+                    404
+                );
+            }
+        } else {
+            targetVersion = codeDoc.versions?.[codeDoc.versions.length - 1];
+            if (!targetVersion) {
+                return response.sendError(res, "No versions available for this workflow", 404);
+            }
+        }
+
+        // 3. Validate the S3 key exists (set by the compiler service after execution)
+        const s3Key = targetVersion.s3Key;
+        if (!s3Key) {
+            return response.sendError(
+                res,
+                "Test case file is not available yet. Please execute the code first.",
+                404
+            );
+        }
+
+        // 4. Generate a presigned GET URL valid for 1 hour (3600 seconds)
+        const presignedUrl = await generateGetPresignedUrl(s3Key, 3600);
+
+        log(`[TestCaseCode] Presigned URL generated for planId=${workflowId} | version=${targetVersion.versionNumber} | userId=${userId}`);
+
+        return response.sendSuccess(
+            res,
+            {
+                presignedUrl,
+                workflowId,
+                version: targetVersion.versionNumber,
+                expiresInSeconds: 3600,
+            },
+            "Presigned download URL generated"
+        );
+    } catch (error) {
+        logError("[TestCaseCode] getTestCaseDownloadUrl error:", error);
+        return response.sendError(res, error.message || "Failed to generate download URL", 500, error);
     }
 };

@@ -11,6 +11,7 @@ import {
     getTestCaseCode,
     listTestCaseCodes,
     executeTestCaseCode,
+    getTestCaseDownloadUrl,
 } from "../controllers/testCaseCode.controller.js";
 import { authenticateToken } from "../middlewares/auth.middleware.js";
 
@@ -46,5 +47,9 @@ router.put("/code-generate/:workflowId", authenticateToken, regenerateTestCaseCo
 
 // Execute generated code to generate testcases zip
 router.post("/execute/:workflowId", authenticateToken, executeTestCaseCode);
+
+// Generate a presigned S3 download URL for a test case zip
+// Query: ?version=<number>  (optional, defaults to latest)
+router.get("/download/:workflowId", authenticateToken, getTestCaseDownloadUrl);
 
 export default router;

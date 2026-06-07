@@ -20,16 +20,33 @@ const parseNumberOfTestCases = (value, fallback = 5) => {
 // POST /api/test-case/plan
 // ---------------------------------------------------------------------------
 
+const MAX_EXAMPLE_LEN = 2000;
+
 export const createTestCasePlan = async (req, res) => {
     try {
         const userId = req.user?._id;
-        const { statement, inputConstraint = "", outputConstraint = "", numberOfTestCases } = req.body;
+        const {
+            statement,
+            inputConstraint = "",
+            outputConstraint = "",
+            numberOfTestCases,
+            inputExample,
+            outputExample,
+        } = req.body;
 
         if (!statement || String(statement).trim() === "") {
             return response.sendError(res, "statement is required", 400);
         }
+        if (!inputExample || String(inputExample).trim() === "") {
+            return response.sendError(res, "inputExample is required", 400);
+        }
+        if (!outputExample || String(outputExample).trim() === "") {
+            return response.sendError(res, "outputExample is required", 400);
+        }
 
         const resolvedCount = parseNumberOfTestCases(numberOfTestCases, 5);
+        const trimmedInputExample = String(inputExample).trim().slice(0, MAX_EXAMPLE_LEN);
+        const trimmedOutputExample = String(outputExample).trim().slice(0, MAX_EXAMPLE_LEN);
 
         // Create the workflow document in pending state
         const plan = await testCasePlanModel.create({
@@ -37,6 +54,8 @@ export const createTestCasePlan = async (req, res) => {
             statement: String(statement).trim(),
             inputConstraint: String(inputConstraint).trim(),
             outputConstraint: String(outputConstraint).trim(),
+            inputExample: trimmedInputExample,
+            outputExample: trimmedOutputExample,
             numberOfTestCases: resolvedCount,
             status: "pending",
             versions: [],
@@ -51,6 +70,8 @@ export const createTestCasePlan = async (req, res) => {
             statement: plan.statement,
             inputConstraint: plan.inputConstraint,
             outputConstraint: plan.outputConstraint,
+            inputExample: plan.inputExample,
+            outputExample: plan.outputExample,
             numberOfTestCases: resolvedCount,
         });
 
@@ -76,7 +97,7 @@ export const regenerateTestCasePlan = async (req, res) => {
     try {
         const userId = req.user?._id;
         const { workflowId } = req.params;
-        const { statement, inputConstraint, outputConstraint, numberOfTestCases } = req.body;
+        const { statement, inputConstraint, outputConstraint, numberOfTestCases, inputExample, outputExample } = req.body;
 
         const plan = await testCasePlanModel.findById(workflowId);
         if (!plan) {
@@ -93,15 +114,29 @@ export const regenerateTestCasePlan = async (req, res) => {
         const effectiveCount = numberOfTestCases !== undefined
             ? parseNumberOfTestCases(numberOfTestCases, plan.numberOfTestCases)
             : plan.numberOfTestCases;
+        const effectiveInputExample = inputExample !== undefined
+            ? String(inputExample).trim().slice(0, MAX_EXAMPLE_LEN)
+            : plan.inputExample;
+        const effectiveOutputExample = outputExample !== undefined
+            ? String(outputExample).trim().slice(0, MAX_EXAMPLE_LEN)
+            : plan.outputExample;
 
         if (!effectiveStatement) {
             return response.sendError(res, "statement is required", 400);
+        }
+        if (!effectiveInputExample) {
+            return response.sendError(res, "inputExample is required", 400);
+        }
+        if (!effectiveOutputExample) {
+            return response.sendError(res, "outputExample is required", 400);
         }
 
         // Persist any overridden values & reset status
         plan.statement = effectiveStatement;
         plan.inputConstraint = effectiveInput;
         plan.outputConstraint = effectiveOutput;
+        plan.inputExample = effectiveInputExample;
+        plan.outputExample = effectiveOutputExample;
         plan.numberOfTestCases = effectiveCount;
         plan.status = "pending";
         await plan.save();
@@ -113,6 +148,8 @@ export const regenerateTestCasePlan = async (req, res) => {
             statement: effectiveStatement,
             inputConstraint: effectiveInput,
             outputConstraint: effectiveOutput,
+            inputExample: effectiveInputExample,
+            outputExample: effectiveOutputExample,
             numberOfTestCases: effectiveCount,
         });
 

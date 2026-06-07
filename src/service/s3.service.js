@@ -99,6 +99,7 @@ export const generateGetPresignedUrl = async (key, expiresIn = 3600) => {
     return await getSignedUrl(s3, command, { expiresIn });
 }
 
+
 export const getContentType = (fileName) => {
     const ext = fileName.toLowerCase().split('.').pop();
     const contentTypes = {
