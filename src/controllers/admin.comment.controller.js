@@ -9,6 +9,7 @@ export const getAdminComments = async (req, res) => {
       limit = 10,
       search = '',
       status = 'all',
+      itemModel = 'all', // 'all' | 'Post' | 'Solution'
       sortBy = 'createdAt',
       order = 'desc'
     } = req.query;
@@ -21,6 +22,11 @@ export const getAdminComments = async (req, res) => {
       query.isHidden = false;
     } else if (status === 'hidden') {
       query.isHidden = true;
+    }
+
+    // Filter by itemModel (Post / Solution)
+    if (itemModel === 'Post' || itemModel === 'Solution') {
+      query.itemModel = itemModel;
     }
 
     // Search by content
@@ -51,7 +57,7 @@ export const getAdminComments = async (req, res) => {
     const commentsWithDetails = comments.map(comment => ({
       _id: comment._id,
       content: comment.content,
-      itemTitle: comment.item?.title || 'Unknown Post',
+      itemTitle: comment.item?.title || (comment.itemModel === 'Solution' ? 'Unknown Solution' : 'Unknown Post'),
       itemId: comment.item?._id || comment.item || null,
       itemModel: comment.itemModel,
       authorInfo: comment.author ? {
@@ -109,17 +115,21 @@ export const getCommentStats = async (req, res) => {
       totalComments,
       visibleComments,
       hiddenComments,
-      recentComments
+      recentComments,
+      postComments,
+      solutionComments
     ] = await Promise.all([
       Comment.countDocuments({}),
       Comment.countDocuments({ isHidden: { $ne: true } }),
       Comment.countDocuments({ isHidden: true }),
       Comment.countDocuments({
         createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-      })
+      }),
+      Comment.countDocuments({ itemModel: 'Post' }),
+      Comment.countDocuments({ itemModel: 'Solution' })
     ]);
 
-    // Top posts with most comments
+    // Top items with most comments
     const commentsByItem = await Comment.aggregate([
       {
         $group: {
@@ -168,6 +178,8 @@ export const getCommentStats = async (req, res) => {
         visibleComments,
         hiddenComments,
         recentComments,
+        postComments,
+        solutionComments,
         commentsByItem: commentsByItem.length,
         topCommenters
       },

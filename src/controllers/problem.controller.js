@@ -86,6 +86,13 @@ export const createProblem = async (req, res) => {
         if (problem.isContestInClassroom === undefined) {
             problem.isContestInClassroom = false;
         }
+        if (problem.rating !== undefined) {
+            const ratingVal = Number(problem.rating);
+            if (isNaN(ratingVal) || ratingVal < 100 || ratingVal > 1000) {
+                return response.sendError(res, "Rating must be an integer between 100 and 1000", 400);
+            }
+            problem.rating = ratingVal;
+        }
 
         const createdProblem = await problemModels.create(problem);
         console.log(userId)
@@ -104,6 +111,13 @@ export const updateProblem = async (req, res) => {
         const problem = await problemModels.findById(problemId);
         if (problem == null) {
             return response.sendError(res, "Problem not found", 404);
+        }
+        if (problemUpdates.rating !== undefined) {
+            const ratingVal = Number(problemUpdates.rating);
+            if (isNaN(ratingVal) || ratingVal < 100 || ratingVal > 1000) {
+                return response.sendError(res, "Rating must be an integer between 100 and 1000", 400);
+            }
+            problemUpdates.rating = ratingVal;
         }
         Object.assign(problem, problemUpdates);
         await problemModels.updateOne({ _id: problemId }, problem);
@@ -279,54 +293,78 @@ export const getProblemStats = async (req, res) => {
 }
 
 export const getAllProblem = async (req, res) => {
-    try{
-        let {name, tag, difficulty, page, size, sortBy, order} = req.query;
+    try {
+        let {
+            name,
+            tag,
+            difficulty,
+            isActive,       // 'true' | 'false'
+            hasSolution,    // 'true' | 'false'
+            dateFrom,       // ISO date string
+            dateTo,         // ISO date string
+            page,
+            size,
+            limit,          // alias của size (frontend dùng limit)
+            sortBy,
+            order
+        } = req.query;
+
         let filter = {};
+
+        // Tìm kiếm theo tên hoặc shortId
         if (name) {
             filter.$or = [
                 { name: { $regex: name, $options: 'i' } },
                 { shortId: { $regex: name, $options: 'i' } }
             ];
         }
-        if (tag) {
-            filter.tags = tag;
-        }
-        if (difficulty) {
-            filter.difficulty = difficulty;
-        }
-        // if (classroomId === 'null' || classroomId === 'public') {
-        //     filter.classRoom = null; // Public problems only
-        // } 
-        // else if (classroomId) {
-        //     filter.classRoom = classroomId;
-        // }
 
-        if (!sortBy) {
-            sortBy = 'createdAt';
+        if (tag) filter.tags = tag;
+
+        if (difficulty) filter.difficulty = difficulty;
+
+        // Filter theo trạng thái hoạt động
+        if (isActive !== undefined && isActive !== '') {
+            filter.isActive = isActive === 'true' || isActive === true;
         }
 
-        if (!order) {
-            order = 1;
-        }
-        else{
-            order = order.toLowerCase() === 'asc' ? 1 : -1;
+        // Filter theo có giải pháp (trường đã được sync tự động bởi Solution hooks)
+        if (hasSolution !== undefined && hasSolution !== '') {
+            filter.hasSolution = hasSolution === 'true' || hasSolution === true;
         }
 
+        // Filter theo khoảng thời gian tạo
+        if (dateFrom || dateTo) {
+            filter.createdAt = {};
+            if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
+            if (dateTo) {
+                const to = new Date(dateTo);
+                to.setHours(23, 59, 59, 999);
+                filter.createdAt.$lte = to;
+            }
+        }
+
+        // Sắp xếp
+        if (!sortBy) sortBy = 'createdAt';
+        const sortOrder = !order ? -1 : (order.toLowerCase() === 'asc' ? 1 : -1);
+        const sortOptions = { [sortBy]: sortOrder, _id: sortOrder };
+
+        // Phân trang — hỗ trợ cả `size` và `limit`
         const pageNumber = parseInt(page) || 1;
-        const pageSize = parseInt(size) || 20;
+        const pageSize = parseInt(limit || size) || 20;
         const skip = (pageNumber - 1) * pageSize;
 
-        // adding _id to sort
-        const sortOptions = {[sortBy]: order, _id: order};
+        const [problems, total] = await Promise.all([
+            problemModels.find(filter, { numberOfTestcases: 0 })
+                .sort(sortOptions)
+                .skip(skip)
+                .limit(pageSize)
+                .lean(),
+            problemModels.countDocuments(filter)
+        ]);
 
-        const problems = await problemModels.find(filter, {numberOfTestcases: 0})
-            .sort(sortOptions)
-            .skip(skip)
-            .limit(pageSize);
-        const total = await problemModels.countDocuments(filter);
         return response.sendSuccess(res, pageDTO(problems, total, pageNumber, pageSize));
-    }
-    catch (error) {
+    } catch (error) {
         console.log(error);
         return response.sendError(res, error);
     }
