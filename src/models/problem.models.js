@@ -24,7 +24,10 @@ const problemSchema = new mongoose.Schema({
     shortId: { type: String, default: () => randomString() },
     classRoom: {type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null, index: true},
     isContestInClassroom: {type: Boolean, default: false, index: true},
-    rating: {type: Number, default: 0},
+    rating: {type: Number, default: 100, min: 100, max: 1000},
+    // Solution tracking — automatically maintained by Solution model hooks
+    hasSolution: {type: Boolean, default: false, index: true},
+    solutionCount: {type: Number, default: 0},
     createBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref:"User",
@@ -38,4 +41,7 @@ const problemSchema = new mongoose.Schema({
 })
 problemSchema.index({ classRoom: 1, isActive: 1 });
 problemSchema.index({ classRoom: 1, isActive: 1, isContestInClassroom: 1 });
+problemSchema.index({ hasSolution: 1 });
+problemSchema.index({ isActive: 1, hasSolution: 1 });
+problemSchema.index({ createdAt: -1 });
 export default mongoose.model('Problem', problemSchema);

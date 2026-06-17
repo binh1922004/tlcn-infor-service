@@ -315,4 +315,48 @@ solutionSchema.methods.incrementView = function() {
   return this.save();
 };
 
-export default mongoose.model('Solution', solutionSchema);
+// ============================================================
+// HOOKS — Tự động đồng bộ hasSolution & solutionCount trên Problem
+// ============================================================
+
+/**
+ * Đếm lại số Solution có hiệu lực cho một problem và cập nhật Problem.hasSolution / solutionCount.
+ * Chỉ tính các solution có status không phải 'rejected' hoặc 'hidden'.
+ */
+const syncProblemSolutionStats = async (problemId) => {
+  if (!problemId) return;
+  try {
+    const Problem = mongoose.model('Problem');
+    const count = await mongoose.model('Solution').countDocuments({
+      problem: problemId,
+      status: { $nin: ['rejected', 'hidden'] }
+    });
+    await Problem.findByIdAndUpdate(problemId, {
+      solutionCount: count,
+      hasSolution: count > 0
+    });
+  } catch (err) {
+    console.error('❌ syncProblemSolutionStats error:', err);
+  }
+};
+
+// Sau khi tạo hoặc cập nhật solution → re-sync Problem
+solutionSchema.post('save', async function (doc) {
+  await syncProblemSolutionStats(doc.problem);
+});
+
+// Sau khi findOneAndUpdate (ví dụ: moderate, resubmit)
+solutionSchema.post('findOneAndUpdate', async function (doc) {
+  if (doc) await syncProblemSolutionStats(doc.problem);
+});
+
+// Sau khi xóa một solution → re-sync Problem
+solutionSchema.post('findOneAndDelete', async function (doc) {
+  if (doc) await syncProblemSolutionStats(doc.problem);
+});
+
+solutionSchema.post('deleteOne', { document: true, query: false }, async function () {
+  await syncProblemSolutionStats(this.problem);
+});
+
+export default mongoose.model('Solution', solutionSchema);
