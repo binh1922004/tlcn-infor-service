@@ -70,6 +70,7 @@ export const updateSubmissionStatus = async (submissionId, data) => {
         submission.memory = data.max_memory_mb;
         submission.passed = data.passed;
         submission.total = data.total;
+        submission.errorMessage = data.error;
         if (submission.type === 'contest' && submission.contest && submission.contestParticipant) {
             // If the submission is part of a contest, additional logic can be added here
             const contest = submission.contest;
