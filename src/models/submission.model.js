@@ -37,7 +37,7 @@ const submissionSchema = new mongoose.Schema({
         }
     },
     score: {type: Number, default: 0}, // For future use in contests with score-based evaluation
-
+    errorMessage: {type: String, default: ''},
     classroom: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Classroom',
