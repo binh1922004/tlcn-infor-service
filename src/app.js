@@ -27,6 +27,7 @@ import { log } from "./utils/logger.js";
 import recommendationRoutes from './routes/recommendation.routes.js';
 import bktRoutes from './routes/bkt.routes.js';
 import testCasePlanRoutes from './routes/testCasePlan.routes.js';
+import preTestRoutes from './routes/preTest.routes.js';
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -101,4 +102,5 @@ app.use('/health', async (req, res) => {
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/bkt', bktRoutes);
 app.use('/api/test-case', testCasePlanRoutes);
+app.use('/api/pretest', preTestRoutes);
 export default app;

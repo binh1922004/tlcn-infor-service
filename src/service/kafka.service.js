@@ -7,6 +7,7 @@ import testCasePlanModel from "../models/testCasePlan.model.js";
 import testCaseCodeModel from "../models/testCaseCode.model.js";
 import { log, logError, logWarn } from "../utils/logger.js";
 import {generateGetPresignedUrl} from "./s3.service.js";
+import redisClient from "../utils/redisClient.js";
 const { sendMessageToUser } = await import('../socket/socket.js');
 
 const KafkaProducerSingleton = (function () {
@@ -47,6 +48,8 @@ const KafkaProducerSingleton = (function () {
                                 { topic: config.kafka_topics.ai_test_case_code_response },
                                 { topic: config.kafka_topics.compiler_test_case_generation_request },
                                 { topic: config.kafka_topics.compiler_test_case_generation_response },
+                                { topic: config.kafka_topics.compiler_pre_test_request },
+                                { topic: config.kafka_topics.compiler_pre_test_response },
                             ]
                         });
                         await admin.disconnect();
@@ -389,6 +392,64 @@ export const setupKafkaConsumers = async () => {
             }
         });
 
+        // Register handler for pre-test result (task 7.1–7.3 + task 9.4)
+        kafka.registerHandler(config.kafka_topics.compiler_pre_test_response, async ({ topic, message }) => {
+            log(`[PreTest] Received pre-test result from Compiler service`);
+            const data = JSON.parse(message.value.toString());
+
+            const { id: preTestId, userId, status, actualOutput, time, memoryMb, error: errorMsg } = data;
+
+            try {
+                if (preTestId) {
+                    const redisKey = `pretest:${preTestId}`;
+                    const existing = await redisClient.get(redisKey);
+                    if (existing) {
+                        const parsed = JSON.parse(existing);
+                        const updated = {
+                            ...parsed,
+                            status,
+                            actualOutput: actualOutput || null,
+                            time: time || 0,
+                            memoryMb: memoryMb || 0,
+                            error: errorMsg || null,
+                            updatedAt: new Date().toISOString()
+                        };
+                        await redisClient.setEx(redisKey, 600, JSON.stringify(updated));
+                    } else {
+                        await redisClient.setEx(redisKey, 600, JSON.stringify({
+                            preTestId,
+                            userId,
+                            status,
+                            actualOutput: actualOutput || null,
+                            time: time || 0,
+                            memoryMb: memoryMb || 0,
+                            error: errorMsg || null,
+                            updatedAt: new Date().toISOString()
+                        }));
+                    }
+                }
+            } catch (redisErr) {
+                logError('[PreTest] Failed to update Redis status:', redisErr);
+            }
+
+            if (!userId) {
+                logWarn(`[PreTest] Missing userId in pre-test result (preTestId=${preTestId}) — cannot relay via WebSocket`);
+                return;
+            }
+
+            // Relay to the user via WebSocket; sendMessageToUser logs a warning when user is offline
+            sendMessageToUser(userId, 'PRE_TEST_RESULT', {
+                preTestId,
+                status,
+                actualOutput: actualOutput || null,
+                time: time || 0,
+                memoryMb: memoryMb || 0,
+                error: errorMsg || null,
+            });
+
+            log(`[PreTest] WebSocket PRE_TEST_RESULT sent to userId=${userId}, preTestId=${preTestId}, status=${status}`);
+        });
+
         // Subscribe all topics
         await kafka.subscribe([
             config.kafka_topics.compiler_submission_response,
@@ -396,6 +457,7 @@ export const setupKafkaConsumers = async () => {
             config.kafka_topics.ai_test_case_plan_response,
             config.kafka_topics.ai_test_case_code_response,
             config.kafka_topics.compiler_test_case_generation_response,
+            config.kafka_topics.compiler_pre_test_response,
         ]);
     }
     catch (err) {
