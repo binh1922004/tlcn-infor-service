@@ -1,11 +1,13 @@
 import { createClient } from "redis";
 import {config} from "../../config/env.js";
 import { log, logError } from "./logger.js";
+import {redis} from "googleapis/build/src/apis/redis/index.js";
 
-const redisHost = config.redis_host || "localhost:6379";
+const redisHost = config.redis_host || "redis://localhost:6379";
 
+console.log(redisHost)
 const redisClient = createClient({
-  url: `redis://${redisHost}`,
+  url: `${redisHost}`,
 });
 
 redisClient.on("error", (err) => logError("Redis error:", err));
