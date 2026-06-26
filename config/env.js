@@ -42,6 +42,8 @@ export const config = {
         ai_test_case_plan_response: process.env.KAFKA_AI_TEST_CASE_PLAN_RESPONSE || 'ai.test-case-plan.response',
         ai_test_case_code_request: process.env.KAFKA_AI_TEST_CASE_CODE_REQUEST || 'ai.test-case-code.request',
         ai_test_case_code_response: process.env.KAFKA_AI_TEST_CASE_CODE_RESPONSE || 'ai.test-case-code.response',
+        compiler_pre_test_request: process.env.KAFKA_COMPILER_PRE_TEST_REQUEST || 'compiler.pre-test.request',
+        compiler_pre_test_response: process.env.KAFKA_COMPILER_PRE_TEST_RESPONSE || 'compiler.pre-test.response',
     },
     redis_host: process.env.REDIS_HOST,
     callback_url: process.env.CALLBACK_URL,
