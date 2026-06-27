@@ -5,6 +5,7 @@ import addShortId from "./migration/addShortId.js";
 import { setupKafkaConsumers } from "./service/kafka.service.js";
 import { setupSocket } from "./socket/socket.js";
 import startClassroomAutoCloseJob from "./jobs/classroom.job.js";
+import startRatingJob from "./jobs/rating.job.js";
 import http from "http";
 import { log } from "./utils/logger.js";
 
@@ -24,6 +25,7 @@ const startServer = async () => {
     if (config.enable_cron_jobs !== 'false') {
       log('Starting scheduled jobs...');
       startClassroomAutoCloseJob();
+      startRatingJob();
     } else {
       log('Cron jobs are disabled');
     }

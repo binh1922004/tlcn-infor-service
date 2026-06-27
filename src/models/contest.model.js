@@ -22,6 +22,9 @@ const contestSchema = new mongoose.Schema({
     classRoom: { type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', default: null},
     shortId: { type: String, default: () => randomString() },
     noOfParticipants: { type: Number, default: 0 },
+    // Flag đánh dấu đã tính Elo cho contest này chưa
+    // Cron job dùng field này để tránh tính trùng
+    ratingCalculated: { type: Boolean, default: false, index: true },
 }, {
     timestamps: true,//auto generate createAt and updateAt
     strict: true,
