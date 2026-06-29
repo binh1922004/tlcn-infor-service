@@ -378,3 +378,132 @@ export const requestFollowUpHint = async (req, res) => {
         return response.sendError(res, error.message || "Failed to request follow-up hint", 500, error);
     }
 };
+
+// ─────────────────────────────────────────────────────────────────
+// sendChatMessage — POST /problem/:problemRef/chat
+// Rate limit: 20s cooldown, 15 messages/day per problem
+// ─────────────────────────────────────────────────────────────────
+const AI_CHAT_COOLDOWN_MS = 20_000;
+const AI_CHAT_DAILY_CAP = 15;
+
+export const sendChatMessage = async (req, res) => {
+    try {
+        const userId = req.user?._id || req.user?.id;
+        const { problemRef } = req.params;
+        const { content, sourceCode, language, submissionId } = req.body;
+
+        if (!content || !String(content).trim()) {
+            return response.sendError(res, "Nội dung tin nhắn không được để trống.", 400);
+        }
+        const cleanedContent = String(content).trim().slice(0, 2000);
+
+        const problem = await resolveProblem(problemRef, "_id shortId name statement input output examplesInput examplesOutput");
+        if (!problem) {
+            return response.sendError(res, "Problem not found", 404);
+        }
+
+        // Eligibility: must have received at least one hint
+        const existingConversation = await aiConversationModel
+            .findOne({ user: userId, problem: problem._id })
+            .select("messages")
+            .lean();
+
+        const allMessages = existingConversation?.messages || [];
+
+        const hasReceivedHint = allMessages.some((msg) => msg.role === "assistant");
+        if (!hasReceivedHint) {
+            return response.sendError(res, "Bạn cần nhận gợi ý AI trước khi sử dụng tính năng chat.", 403);
+        }
+
+        // Rate limit: 20s cooldown
+        const lastChatMsg = [...allMessages]
+            .reverse()
+            .find((msg) => msg.role === "user" && msg.source === "chat_message");
+
+        if (lastChatMsg?.createdAt) {
+            const elapsed = Date.now() - new Date(lastChatMsg.createdAt).getTime();
+            if (elapsed < AI_CHAT_COOLDOWN_MS) {
+                const waitSeconds = Math.ceil((AI_CHAT_COOLDOWN_MS - elapsed) / 1000);
+                return response.sendError(res, `Vui lòng đợi ${waitSeconds} giây trước khi gửi tin nhắn tiếp theo.`, 429);
+            }
+        }
+
+        // Rate limit: 15 messages/day
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayChatCount = allMessages.filter(
+            (msg) =>
+                msg.role === "user" &&
+                msg.source === "chat_message" &&
+                msg.createdAt &&
+                new Date(msg.createdAt) >= todayStart
+        ).length;
+
+        if (todayChatCount >= AI_CHAT_DAILY_CAP) {
+            return response.sendError(res, `Bạn đã đạt giới hạn ${AI_CHAT_DAILY_CAP} tin nhắn chat cho bài này trong ngày hôm nay.`, 429);
+        }
+
+        // Persist user chat message
+        const normalizedSubmissionId =
+            submissionId && mongoose.Types.ObjectId.isValid(submissionId) ? submissionId : null;
+        const now = new Date();
+
+        const conversation = await aiConversationModel.findOneAndUpdate(
+            { user: userId, problem: problem._id },
+            {
+                $set: { lastMessageAt: now },
+                $push: {
+                    messages: {
+                        role: "user",
+                        type: "chat",
+                        content: cleanedContent,
+                        submission: normalizedSubmissionId,
+                        source: "chat_message",
+                        createdAt: now,
+                    },
+                },
+            },
+            { new: true }
+        );
+
+        // Build conversation context (last 6 messages)
+        const conversationContext = (conversation?.messages || [])
+            .slice(-6)
+            .map((msg) => ({
+                role: msg.role,
+                content: String(msg.content || "").slice(0, 2000),
+                createdAt: msg.createdAt,
+            }));
+
+        const normalizedLanguage = String(language || "cpp").toLowerCase();
+        const normalizedSourceCode = String(sourceCode || "").trim();
+
+        await sendMessage(config.kafka_topics.ai_hint_request, {
+            userId,
+            submissionId: normalizedSubmissionId,
+            problemId: problem._id,
+            problemShortId: problem.shortId || null,
+            problemTitle: problem.name || "Unknown problem",
+            problemStatement: problem.statement || "",
+            problemInput: problem.input || "",
+            problemOutput: problem.output || "",
+            examplesInput: Array.isArray(problem.examplesInput) ? problem.examplesInput : [],
+            examplesOutput: Array.isArray(problem.examplesOutput) ? problem.examplesOutput : [],
+            sourceCode: normalizedSourceCode,
+            language: normalizedLanguage,
+            failedReason: "CHAT_MESSAGE",
+            userQuestion: cleanedContent,
+            conversationContext,
+        });
+
+        return response.sendSuccess(
+            res,
+            { queued: true, problem: { _id: problem._id, shortId: problem.shortId, name: problem.name } },
+            "Chat message queued",
+            202
+        );
+    } catch (error) {
+        console.error(error);
+        return response.sendError(res, error.message || "Failed to send chat message", 500, error);
+    }
+};
